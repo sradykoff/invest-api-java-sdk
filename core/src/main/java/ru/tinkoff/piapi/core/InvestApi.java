@@ -288,7 +288,9 @@ public class InvestApi {
 
   /**
    * Запуск функции апи с поддержкой получения заголовков grpc
-   * @param api - фукнция (InvestApi call, HeadersWrapper header) -> T
+   * @param api - фукнция (InvestApi call, HeadersWrapper headers) -> T
+   * При вызове через обертку call  в функции, после выполнения грпц вызова,
+   * получить заголовки сервера headers.get("x-tracing-id")
    * @return результат выполнения api
    * @param <T> - тип возвращаемого значения
    */
