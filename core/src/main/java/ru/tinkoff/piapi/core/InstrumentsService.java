@@ -11,6 +11,7 @@ import ru.tinkoff.piapi.contract.v1.InstrumentsServiceGrpc.InstrumentsServiceStu
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
@@ -354,9 +355,9 @@ public class InstrumentsService {
    * Получение (синхронное) списка фондов.
    *
    * @param instrumentStatus статус инструмента. Значения INSTRUMENT_STATUS_BASE, INSTRUMENT_STATUS_ALL
-   * @param exchangeType Площадка, на которой торгуется инструмент, возможные значения.
-   *                     Значения INSTRUMENT_EXCHANGE_UNSPECIFIED - не определено,
-   *                     INSTRUNENT_EXCHANGE_DEALER - торговля внутри дилера;
+   * @param exchangeType     Площадка, на которой торгуется инструмент, возможные значения.
+   *                         Значения INSTRUMENT_EXCHANGE_UNSPECIFIED - не определено,
+   *                         INSTRUNENT_EXCHANGE_DEALER - торговля внутри дилера;
    * @return Список фондов.
    */
   public List<Etf> getEtfsSync(InstrumentStatus instrumentStatus, InstrumentExchangeType exchangeType) {
@@ -539,9 +540,9 @@ public class InstrumentsService {
    * Получение (синхронное) списка акций.
    *
    * @param instrumentStatus статус инструмента. Значения INSTRUMENT_STATUS_BASE, INSTRUMENT_STATUS_ALL
-   * @param exchangeType Площадка, на которой торгуется инструмент, возможные значения.
-   *                     Значения INSTRUMENT_EXCHANGE_UNSPECIFIED - не определено,
-   * INSTRUNENT_EXCHANGE_DEALER - торговля внутри дилера;
+   * @param exchangeType     Площадка, на которой торгуется инструмент, возможные значения.
+   *                         Значения INSTRUMENT_EXCHANGE_UNSPECIFIED - не определено,
+   *                         INSTRUNENT_EXCHANGE_DEALER - торговля внутри дилера;
    * @return Список акций.
    */
   public List<Share> getSharesSync(InstrumentStatus instrumentStatus, InstrumentExchangeType exchangeType) {
@@ -989,9 +990,9 @@ public class InstrumentsService {
    * Получение (асинхронное) списка фондов.
    *
    * @param instrumentStatus статус инструмента. Значения INSTRUMENT_STATUS_BASE, INSTRUMENT_STATUS_ALL
-   * @param exchangeType Площадка, на которой торгуется инструмент, возможные значения.
-   *                     Значения INSTRUMENT_EXCHANGE_UNSPECIFIED - не определено,
-   *                     INSTRUNENT_EXCHANGE_DEALER - торговля внутри дилера;
+   * @param exchangeType     Площадка, на которой торгуется инструмент, возможные значения.
+   *                         Значения INSTRUMENT_EXCHANGE_UNSPECIFIED - не определено,
+   *                         INSTRUNENT_EXCHANGE_DEALER - торговля внутри дилера;
    * @return Список фондов.
    */
   public CompletableFuture<List<Etf>> getEtfs(InstrumentStatus instrumentStatus, InstrumentExchangeType exchangeType) {
@@ -1174,9 +1175,9 @@ public class InstrumentsService {
    * Получение (асинхронное) списка акций.
    *
    * @param instrumentStatus статус инструмента. Значения INSTRUMENT_STATUS_BASE, INSTRUMENT_STATUS_ALL
-   * @param exchangeType Площадка, на которой торгуется инструмент, возможные значения.
-   *                     Значения INSTRUMENT_EXCHANGE_UNSPECIFIED - не определено,
-   *                     INSTRUNENT_EXCHANGE_DEALER - торговля внутри дилера;
+   * @param exchangeType     Площадка, на которой торгуется инструмент, возможные значения.
+   *                         Значения INSTRUMENT_EXCHANGE_UNSPECIFIED - не определено,
+   *                         INSTRUNENT_EXCHANGE_DEALER - торговля внутри дилера;
    * @return Список акций.
    */
   public CompletableFuture<List<Share>> getShares(InstrumentStatus instrumentStatus,
@@ -1289,7 +1290,7 @@ public class InstrumentsService {
    */
   @Nonnull
   public Option getOptionByUidSync(@Nonnull String uid) {
-    return getInstrumentByUidSync(uid, request->instrumentsBlockingStub.optionBy(request).getInstrument());
+    return getInstrumentByUidSync(uid, request -> instrumentsBlockingStub.optionBy(request).getInstrument());
   }
 
   /**
@@ -1311,7 +1312,7 @@ public class InstrumentsService {
    */
   @Nonnull
   public Option getOptionByPositionUidSync(@Nonnull String positionUid) {
-    return getInstrumentByPositionUidSync(positionUid, request->instrumentsBlockingStub.optionBy(request).getInstrument());
+    return getInstrumentByPositionUidSync(positionUid, request -> instrumentsBlockingStub.optionBy(request).getInstrument());
   }
 
   /**
@@ -1724,12 +1725,13 @@ public class InstrumentsService {
 
   /**
    * Получение графика событий по облигации
+   *
    * @param instrumentId figi / instrument_uid инструмента
-   * @param from Начало периода по часовому поясу UTC.
-   * @param to   Конец периода по часовому поясу UTC.
-   * @param eventType Тип события. Возможные значения:
-   * EVENT_TYPE_CPN - Купон, EVENT_TYPE_CALL - Опцион (оферта), EVENT_TYPE_MTY - Погашение,
-   *                  EVENT_TYPE_CONV - Конвертация
+   * @param from         Начало периода по часовому поясу UTC.
+   * @param to           Конец периода по часовому поясу UTC.
+   * @param eventType    Тип события. Возможные значения:
+   *                     EVENT_TYPE_CPN - Купон, EVENT_TYPE_CALL - Опцион (оферта), EVENT_TYPE_MTY - Погашение,
+   *                     EVENT_TYPE_CONV - Конвертация
    * @return Список событий по облигации
    */
   public CompletableFuture<List<GetBondEventsResponse.BondEvent>> getBondEvents(
@@ -1758,24 +1760,26 @@ public class InstrumentsService {
 
   /**
    * Получение графика событий по облигации
+   *
    * @param instrumentId figi / instrument_uid инструмента
-   * @param from Начало периода по часовому поясу UTC.
-   * @param to   Конец периода по часовому поясу UTC.
+   * @param from         Начало периода по часовому поясу UTC.
+   * @param to           Конец периода по часовому поясу UTC.
    * @return Список событий по облигации
    */
   public CompletableFuture<List<GetBondEventsResponse.BondEvent>> getBondEvents(
     @Nonnull String instrumentId,
     @Nullable Instant from,
     @Nullable Instant to) {
-      return getBondEvents(instrumentId, from, to, null);
+    return getBondEvents(instrumentId, from, to, null);
   }
 
   /**
    * Получение графика событий по облигации
+   *
    * @param instrumentId figi / instrument_uid инструмента
-   * @param eventType Тип события. Возможные значения:
-   * EVENT_TYPE_CPN - Купон, EVENT_TYPE_CALL - Опцион (оферта), EVENT_TYPE_MTY - Погашение,
-   *                  EVENT_TYPE_CONV - Конвертация
+   * @param eventType    Тип события. Возможные значения:
+   *                     EVENT_TYPE_CPN - Купон, EVENT_TYPE_CALL - Опцион (оферта), EVENT_TYPE_MTY - Погашение,
+   *                     EVENT_TYPE_CONV - Конвертация
    * @return Список событий по облигации
    */
   public CompletableFuture<List<GetBondEventsResponse.BondEvent>> getBondEvents(
@@ -1786,6 +1790,7 @@ public class InstrumentsService {
 
   /**
    * Получение графика событий по облигации
+   *
    * @param instrumentId figi / instrument_uid инструмента
    * @return Список событий по облигации
    */
@@ -1796,12 +1801,13 @@ public class InstrumentsService {
 
   /**
    * Получение (синхронное) графика событий по облигации
+   *
    * @param instrumentId figi / instrument_uid инструмента
-   * @param from Начало периода по часовому поясу UTC.
-   * @param to   Конец периода по часовому поясу UTC.
-   * @param eventType Тип события. Возможные значения:
-   * EVENT_TYPE_CPN - Купон, EVENT_TYPE_CALL - Опцион (оферта), EVENT_TYPE_MTY - Погашение,
-   *                  EVENT_TYPE_CONV - Конвертация
+   * @param from         Начало периода по часовому поясу UTC.
+   * @param to           Конец периода по часовому поясу UTC.
+   * @param eventType    Тип события. Возможные значения:
+   *                     EVENT_TYPE_CPN - Купон, EVENT_TYPE_CALL - Опцион (оферта), EVENT_TYPE_MTY - Погашение,
+   *                     EVENT_TYPE_CONV - Конвертация
    * @return Список событий по облигации
    */
   public List<GetBondEventsResponse.BondEvent> getBondEventsSync(
@@ -1829,25 +1835,27 @@ public class InstrumentsService {
 
   /**
    * Получение (синхронное) графика событий по облигации
+   *
    * @param instrumentId figi / instrument_uid инструмента
-   * @param from Начало периода по часовому поясу UTC.
-   * @param to   Конец периода по часовому поясу UTC.
+   * @param from         Начало периода по часовому поясу UTC.
+   * @param to           Конец периода по часовому поясу UTC.
    * @return Список событий по облигации
    */
   public List<GetBondEventsResponse.BondEvent> getBondEventsSync(
     @Nonnull String instrumentId,
     @Nullable Instant from,
     @Nullable Instant to
-    ) {
+  ) {
     return getBondEventsSync(instrumentId, from, to, null);
   }
 
   /**
    * Получение (синхронное) графика событий по облигации
+   *
    * @param instrumentId figi / instrument_uid инструмента
-   * @param eventType Тип события. Возможные значения:
-   * EVENT_TYPE_CPN - Купон, EVENT_TYPE_CALL - Опцион (оферта), EVENT_TYPE_MTY - Погашение,
-   *                  EVENT_TYPE_CONV - Конвертация
+   * @param eventType    Тип события. Возможные значения:
+   *                     EVENT_TYPE_CPN - Купон, EVENT_TYPE_CALL - Опцион (оферта), EVENT_TYPE_MTY - Погашение,
+   *                     EVENT_TYPE_CONV - Конвертация
    * @return Список событий по облигации
    */
   public List<GetBondEventsResponse.BondEvent> getBondEventsSync(
@@ -1858,6 +1866,7 @@ public class InstrumentsService {
 
   /**
    * Получение (синхронное) графика событий по облигации
+   *
    * @param instrumentId figi / instrument_uid инструмента
    * @return Список событий по облигации
    */
@@ -1946,8 +1955,8 @@ public class InstrumentsService {
   /**
    * Получение информации по прогнозам на инструмент
    *
-   * @param limit         Максимальное число возвращаемых записей.
-   * @param page          Порядковый номер страницы, начиная с 0.
+   * @param limit Максимальное число возвращаемых записей.
+   * @param page  Порядковый номер страницы, начиная с 0.
    * @return список прогнозов с данными пагинации
    */
   public CompletableFuture<GetConsensusForecastsResponse> getConsensusForecasts(
@@ -1962,7 +1971,7 @@ public class InstrumentsService {
     }
     var request = GetConsensusForecastsRequest.newBuilder().setPaging(paging).build();
     return Helpers.unaryAsyncCall(
-        observer -> instrumentsStub.getConsensusForecasts(request, observer));
+      observer -> instrumentsStub.getConsensusForecasts(request, observer));
   }
 
   /**
@@ -1979,8 +1988,8 @@ public class InstrumentsService {
   /**
    * Получение (синхронное) информации по прогнозам на инструмент
    *
-   * @param limit         Максимальное число возвращаемых записей.
-   * @param page          Порядковый номер страницы, начиная с 0.
+   * @param limit Максимальное число возвращаемых записей.
+   * @param page  Порядковый номер страницы, начиная с 0.
    * @return список прогнозов с данными пагинации
    */
   public GetConsensusForecastsResponse getConsensusForecastsSync(
@@ -2054,6 +2063,21 @@ public class InstrumentsService {
   public List<IndicativeResponse> getIndicativesSync() {
     return Helpers.unaryCall(() -> instrumentsBlockingStub.indicatives(IndicativesRequest.newBuilder().build())
       .getInstrumentsList());
+  }
+
+  /**
+   * Фундаментальные показатели по активу
+   * @param assetIds
+   * @return
+   */
+  public CompletableFuture<GetAssetFundamentalsResponse> getAssetFundamentals(Collection<String> assetIds) {
+    return Helpers.unaryAsyncCall(
+      observer -> instrumentsStub.getAssetFundamentals(
+        GetAssetFundamentalsRequest.newBuilder()
+          .addAllAssets(assetIds)
+          .build(),
+        observer
+      ));
   }
 
 }
