@@ -281,6 +281,12 @@ public class InvestApi {
     return defaultChannel(token, config.getAppNm(), target);
   }
 
+  /**
+   * Запуск функции апи с поддержкой получения заголовков grpc
+   * @param api - фукнция (InvestApi call, HeadersWrapper header) -> T
+   * @return результат выполнения api
+   * @param <T> - тип возвращаемого значения
+   */
   public <T> T runWithHeaders(BiFunction<InvestApi, HeadersWrapper, T> api) {
     var headersWrapper = new HeadersWrapper();
     var metadataCatch = MetadataUtils.newCaptureMetadataInterceptor(headersWrapper.headersRef, headersWrapper.trailersRef);
