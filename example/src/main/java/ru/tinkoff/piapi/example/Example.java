@@ -91,7 +91,7 @@ public class Example {
             Instant.now(),
             CandleInterval.CANDLE_INTERVAL_1_MIN
           )))
-        .
+
     )
 
 
