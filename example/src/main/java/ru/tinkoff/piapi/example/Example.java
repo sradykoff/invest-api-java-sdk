@@ -74,25 +74,25 @@ public class Example {
     var sharesFuture = bot.selectTradingShares(50);
     //setup statistic and watch
 
-    sharesFuture.thenCompose(shares -> api.getMarketDataService().getTradingStatus(share))
+    //sharesFuture.thenCompose(shares -> api.getMarketDataService().getTradingStatus(share))
 
-    sharesFuture.thenCompose(
-      shares -> shares.stream()
-        .map(share -> Tuple.of(
-          share,
-          api.getMarketDataService().getCandles(share.getUid()
-            , Instant.now().minus(MAX_CANDLE_DAY_HISTORY, ChronoUnit.DAYS)
-            , Instant.now()
-            , CandleInterval.CANDLE_INTERVAL_DAY
-          ),
-          api.getMarketDataService().getCandles(
-            share.getUid(),
-            Instant.now().minus(MAX_CANDLE_DAY_HISTORY, ChronoUnit.MINUTES),
-            Instant.now(),
-            CandleInterval.CANDLE_INTERVAL_1_MIN
-          )))
-
-    )
+//    sharesFuture.thenCompose(
+//      shares -> shares.stream()
+//        .map(share -> Tuple.of(
+//          share,
+//          api.getMarketDataService().getCandles(share.getUid()
+//            , Instant.now().minus(MAX_CANDLE_DAY_HISTORY, ChronoUnit.DAYS)
+//            , Instant.now()
+//            , CandleInterval.CANDLE_INTERVAL_DAY
+//          ),
+//          api.getMarketDataService().getCandles(
+//            share.getUid(),
+//            Instant.now().minus(MAX_CANDLE_DAY_HISTORY, ChronoUnit.MINUTES),
+//            Instant.now(),
+//            CandleInterval.CANDLE_INTERVAL_1_MIN
+//          )))
+//
+//    )
 
 
     //start trading

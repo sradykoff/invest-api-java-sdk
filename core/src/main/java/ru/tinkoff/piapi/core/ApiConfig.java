@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.format.DateTimeParseException;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 
@@ -34,6 +35,10 @@ public class ApiConfig {
   public static ApiConfig defaultConfig() {
     var props = loadInternalProps(DEFAULT_CONFIG_PATH);
     var defaultConfig = loadFromProps(props);
+    return updateFromSystemEnv(defaultConfig);
+  }
+
+  public static ApiConfig updateFromSystemEnv(ApiConfig defaultConfig) {
     return Optional.of(defaultConfig)
       .flatMap(cfg -> Optional.ofNullable(System.getenv("TINKOFF_INVEST_API_TARGET_SANDBOX"))
         .map(cfg::withSandboxTarget)
@@ -105,7 +110,7 @@ public class ApiConfig {
     var sandboxToken = props.getProperty("ru.tinkoff.piapi.core.api.sandbox-token");
     var token = props.getProperty("ru.tinkoff.piapi.core.api.token");
     ;
-    return new ApiConfig(
+    return updateFromSystemEnv(new ApiConfig(
       connectionTimeout.toMillis(),
       requestTimeout.toMillis(),
       DEFAULT_APP_NM,
@@ -115,7 +120,7 @@ public class ApiConfig {
       token,
       60,
       60
-    );
+    ));
   }
 
   public static ApiConfig loadFromClassPath(String configResourceName) {
