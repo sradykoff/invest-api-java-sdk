@@ -1391,6 +1391,31 @@ public class InstrumentsService {
     return getInstrumentByFigi(figi, instrumentsStub::getInstrumentBy, InstrumentResponse::getInstrument);
   }
 
+
+  /**
+   * Получение (асинхронное) основной информации об инструменте.
+   *
+   * @param instrumentUid UID инструмента.
+   * @return Основная информация об инструменте (если есть).
+   */
+  @Nonnull
+  public CompletableFuture<InstrumentResponse> getInstrumentByUID(@Nonnull String instrumentUid) {
+    return getInstrumentByUid(instrumentUid, instrumentsStub::getInstrumentBy, Function.identity());
+  }
+
+
+  /**
+   * Получение (sync) основной информации об инструменте.
+   *
+   * @param instrumentUid UID инструмента.
+   * @return Основная информация об инструменте (если есть).
+   */
+  @Nonnull
+  public InstrumentResponse getInstrumentByUIDSync(@Nonnull String instrumentUid) {
+    return getInstrumentByUidSync(instrumentUid, instrumentsBlockingStub::getInstrumentBy);
+  }
+
+
   /**
    * Получение (асинхронное) событий выплаты дивидендов по инструменту.
    *
@@ -2067,6 +2092,7 @@ public class InstrumentsService {
 
   /**
    * Фундаментальные показатели по активу
+   *
    * @param assetIds
    * @return
    */
@@ -2077,6 +2103,21 @@ public class InstrumentsService {
           .addAllAssets(assetIds)
           .build(),
         observer
+      ));
+  }
+
+  /**
+   * Фундаментальные показатели по активу
+   *
+   * @param assetIds
+   * @return
+   */
+  public GetAssetFundamentalsResponse getAssetFundamentalsSync(Collection<String> assetIds) {
+    return Helpers.unaryCall(
+      () -> instrumentsBlockingStub.getAssetFundamentals(
+        GetAssetFundamentalsRequest.newBuilder()
+          .addAllAssets(assetIds)
+          .build()
       ));
   }
 

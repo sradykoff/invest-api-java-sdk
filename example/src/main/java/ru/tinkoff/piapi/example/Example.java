@@ -69,8 +69,15 @@ public class Example {
   public static void main(String[] args) throws Exception {
 
     var api = InvestApi.create(ApiConfig.loadFromClassPath("example-bot.properties"));
+
+    Instruments.saveTradingInstrument("",api);
+
+    System.exit(-1);
+
     var bot = new Example(api);
     //select trading instruments
+
+
     var sharesFuture = bot.selectTradingShares(50);
     //setup statistic and watch
 
