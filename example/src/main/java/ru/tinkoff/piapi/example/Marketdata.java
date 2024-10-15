@@ -11,6 +11,7 @@ import ru.tinkoff.piapi.contract.v1.SecurityTradingStatus;
 import ru.tinkoff.piapi.core.MarketDataService;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
@@ -21,7 +22,9 @@ public class Marketdata {
 
   private final MarketDataService service;
 
-  public List<InstrumentWithPrice> getPrices(Set<Instruments.Instrument> instruments) {
+  public List<InstrumentWithPrice> getPricesAndCandles(Set<Instruments.Instrument> instruments) {
+    var candleFrom = Instant.now().minus(1, ChronoUnit.HOURS);
+    var candleTo = Instant.now();
     return Stream.ofAll(instruments)
       .sliding(100)
       .flatMap(batch -> {
@@ -34,35 +37,22 @@ public class Marketdata {
         var cpMap = closePricesResp.stream()
           .collect(Collectors.toMap(InstrumentClosePriceResponse::getInstrumentUid, Function.identity(), (a, b) -> a));
         return batch.map(
-          instrument -> new InstrumentWithPrice(
-            instrument,
-            lpMap.get(instrument.getUuid()),
-            cpMap.get(instrument.getUuid())
-          )
+          instrument -> {
+            var status = service.getTradingStatusSync(instrument.getUuid());
+            var candles = service.getCandlesSync(instrument.getUuid(), candleFrom, candleTo, CandleInterval.CANDLE_INTERVAL_1_MIN);
+            return new InstrumentWithPrice(
+              instrument,
+              lpMap.get(instrument.getUuid()),
+              cpMap.get(instrument.getUuid()),
+              candles,
+              status.getTradingStatus()
+            );
+          }
         );
       })
       .toJavaList();
   }
 
-  public List<InstrumentWithCandles> getCandles(Set<Instruments.Instrument> instruments, CandleInterval interval, Instant from, Instant to) {
-    return Stream.ofAll(instruments)
-      .sliding(100)
-      .flatMap(batch -> batch.map(instrument -> {
-        var candles = service.getCandlesSync(instrument.getUuid(), from, to, interval);
-        return new InstrumentWithCandles(instrument, candles);
-      }))
-      .toJavaList();
-  }
-
-  public List<InstrumentWithTradingStatus> getTradingStatuses(Set<Instruments.Instrument> instruments) {
-    return Stream.ofAll(instruments)
-      .sliding(100)
-      .flatMap(batch -> batch.map(instrument -> {
-        var status = service.getTradingStatusSync(instrument.getUuid());
-        return new InstrumentWithTradingStatus(instrument, status.getTradingStatus());
-      }))
-      .toJavaList();
-  }
 
   @Data
   @RequiredArgsConstructor
@@ -70,19 +60,7 @@ public class Marketdata {
     private final Instruments.Instrument instrument;
     private final LastPrice lastPrice;
     private final InstrumentClosePriceResponse closePrice;
-  }
-
-  @Data
-  @RequiredArgsConstructor
-  public static class InstrumentWithCandles {
-    private final Instruments.Instrument instrument;
     private final List<HistoricCandle> candles;
-  }
-
-  @Data
-  @RequiredArgsConstructor
-  public static class InstrumentWithTradingStatus {
-    private final Instruments.Instrument instrument;
     private final SecurityTradingStatus tradingStatus;
   }
 

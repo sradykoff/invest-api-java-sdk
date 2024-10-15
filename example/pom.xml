@@ -52,14 +52,14 @@
         <dependency>
             <groupId>com.google.protobuf</groupId>
             <artifactId>protobuf-java-util</artifactId>
-            <version>3.25.4</version>
+            <version>3.25.5</version>
         </dependency>
 
 
         <!-- https://mvnrepository.com/artifact/tech.tablesaw/tablesaw-json -->
         <dependency>
             <groupId>tech.tablesaw</groupId>
-            <artifactId>tablesaw-json</artifactId>
+            <artifactId>tablesaw-jsplot</artifactId>
             <version>0.43.1</version>
         </dependency>
         <dependency>

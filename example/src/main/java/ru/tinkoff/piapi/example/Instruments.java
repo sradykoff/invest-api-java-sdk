@@ -1,45 +1,38 @@
 package ru.tinkoff.piapi.example;
 
 import com.google.protobuf.Message;
-import com.google.protobuf.MessageOrBuilder;
-import com.google.protobuf.util.JsonFormat;
 import io.vavr.Tuple;
-import io.vavr.Tuple2;
 import io.vavr.collection.HashMap;
 import io.vavr.collection.Map;
 import io.vavr.collection.Stream;
-import io.vavr.control.Either;
-import io.vavr.control.Try;
 import lombok.Data;
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import ru.tinkoff.piapi.contract.v1.Asset;
-import ru.tinkoff.piapi.contract.v1.AssetType;
 import ru.tinkoff.piapi.contract.v1.Bond;
 import ru.tinkoff.piapi.contract.v1.Currency;
 import ru.tinkoff.piapi.contract.v1.Etf;
 import ru.tinkoff.piapi.contract.v1.Future;
 import ru.tinkoff.piapi.contract.v1.GetAssetFundamentalsResponse;
-import ru.tinkoff.piapi.contract.v1.InstrumentResponse;
 import ru.tinkoff.piapi.contract.v1.Option;
 import ru.tinkoff.piapi.contract.v1.Share;
+import ru.tinkoff.piapi.contract.v1.TradingSchedule;
 import ru.tinkoff.piapi.core.InstrumentsService;
-import ru.tinkoff.piapi.core.InvestApi;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
-import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static ru.tinkoff.piapi.example.ExampleUtils.writeMessagesToJsonFile;
-import static ru.tinkoff.piapi.example.Instruments.InstrumentObjType.*;
+import static ru.tinkoff.piapi.example.Instruments.InstrumentObjType.ASSET;
+import static ru.tinkoff.piapi.example.Instruments.InstrumentObjType.BOND;
+import static ru.tinkoff.piapi.example.Instruments.InstrumentObjType.CURRENCY;
+import static ru.tinkoff.piapi.example.Instruments.InstrumentObjType.ETF;
+import static ru.tinkoff.piapi.example.Instruments.InstrumentObjType.FUTURE;
+import static ru.tinkoff.piapi.example.Instruments.InstrumentObjType.OPTION;
+import static ru.tinkoff.piapi.example.Instruments.InstrumentObjType.SHARE;
 
 
 @Slf4j
@@ -56,21 +49,44 @@ public class Instruments {
     var currencies = instrumentsService.getTradableCurrenciesSync();
     var futures = instrumentsService.getTradableFuturesSync();
     var options = instrumentsService.getTradableOptionsSync();
-    return new InstrumentsList(assets, shares, etfs, bonds, currencies, futures, options);
-  }
+    var tradingSchedules = instrumentsService.getTradingSchedulesSync();
 
+    var afResponses = assetFundamentsls(
+      Stream.ofAll(
+          shares.stream()
+            .filter(Share::getLiquidityFlag)
+            .filter(share -> !share.getForQualInvestorFlag())
+            .filter(Share::getBuyAvailableFlag)
+            .filter(Share::getSellAvailableFlag)
+            .filter(Share::getShortEnabledFlag)
+            .map(Share::getAssetUid)
+        )
+        .appendAll(
+          Stream.ofAll(
+            bonds.stream()
+              .filter(Bond::getLiquidityFlag)
+              .filter(share -> !share.getForQualInvestorFlag())
+              .filter(Bond::getBuyAvailableFlag)
+              .filter(Bond::getSellAvailableFlag)
+              .filter(Bond::getShortEnabledFlag)
+              .map(Bond::getAssetUid)
+          )
+        )
+//        .appendAll(
+//          Stream.ofAll(
+//            etfs.stream()
+//              .filter(Etf::getLiquidityFlag)
+//              .filter(share -> !share.getForQualInvestorFlag())
+//              .filter(Etf::getBuyAvailableFlag)
+//              .filter(Etf::getSellAvailableFlag)
+//              .filter(Etf::getShortEnabledFlag)
+//              .map(Etf::getAssetUid)
+//          )
+//        )
+        .toJavaSet()
 
-  public InstrumentResponse findInstrument(String query) {
-    var isUuid = Try.of(() -> UUID.fromString(query).toString().equals(query))
-      .getOrElse(false);
-
-    if (isUuid) {
-      return instrumentsService.getInstrumentByUIDSync(query);
-    }
-
-    var instrument = instrumentsService.findInstrument(query);
-
-    return null;
+    );
+    return new InstrumentsList(assets, shares, etfs, bonds, currencies, futures, options, afResponses, tradingSchedules);
   }
 
 
@@ -89,12 +105,6 @@ public class Instruments {
 
   }
 
-
-  public void tradingSchedules() {
-//    var tradingSchedules = instrumentsService.getTradingSchedulesSync(from, to);
-  }
-
-
   @RequiredArgsConstructor
   public static class InstrumentsList {
     final List<Asset> assets;
@@ -104,6 +114,86 @@ public class Instruments {
     final List<Currency> currencies;
     final List<Future> futures;
     final List<Option> options;
+    final List<GetAssetFundamentalsResponse.StatisticResponse> assetFundamentals;
+    final List<TradingSchedule> tradingSchedules;
+
+    public List<Instrument> allInstruments() {
+      var assetMap = assets.stream().collect(Collectors.toMap(Asset::getUid, Function.identity(), (k1, k2) -> k1));
+      var assetFundamentalsMap = assetFundamentals.stream().collect(Collectors.toMap(GetAssetFundamentalsResponse.StatisticResponse::getAssetUid, Function.identity(), (k1, k2) -> k1));
+      return Stream.ofAll(shares)
+        .map(share -> new Instrument(
+          share.getUid(),
+          assetMap.get(share.getAssetUid()),
+          InstrumentObjType.SHARE,
+          share,
+          assetFundamentalsMap.get(share.getAssetUid())
+        ))
+        .appendAll(
+          Stream.ofAll(etfs)
+            .map(etf -> new Instrument(
+              etf.getUid(),
+              assetMap.get(etf.getAssetUid()),
+              InstrumentObjType.ETF,
+              etf,
+              assetFundamentalsMap.get(etf.getAssetUid())
+            ))
+        )
+        .appendAll(
+          Stream.ofAll(bonds)
+            .map(bond -> new Instrument(
+              bond.getUid(),
+              assetMap.get(bond.getAssetUid()),
+              InstrumentObjType.BOND,
+              bond,
+              assetFundamentalsMap.get(bond.getAssetUid())
+            ))
+        )
+        .appendAll(
+          Stream.ofAll(currencies)
+            .map(currency -> new Instrument(
+              currency.getUid(),
+              null,
+              InstrumentObjType.CURRENCY,
+              currency,
+              null
+            ))
+        )
+        .appendAll(
+          Stream.ofAll(futures)
+            .map(future -> new Instrument(
+              future.getUid(),
+              assetMap.get(future.getBasicAsset()),
+              InstrumentObjType.FUTURE,
+              future,
+              assetFundamentalsMap.get(future.getBasicAsset())
+            ))
+
+        )
+        .appendAll(
+          Stream.ofAll(options)
+            .map(option -> new Instrument(
+              option.getUid(),
+              assetMap.get(option.getBasicAsset()),
+              InstrumentObjType.OPTION,
+              option,
+              assetFundamentalsMap.get(option.getBasicAsset()))
+            )
+        )
+        .toJavaList();
+    }
+
+    public List<Instrument> select(InstrumentObjType type, int limit) {
+      var assetComparator = Comparator.comparingDouble(GetAssetFundamentalsResponse.StatisticResponse::getAverageDailyVolumeLast4Weeks)
+        .thenComparingDouble(GetAssetFundamentalsResponse.StatisticResponse::getRoe)
+        .thenComparingDouble(GetAssetFundamentalsResponse.StatisticResponse::getOneYearAnnualRevenueGrowthRate);
+
+      return allInstruments()
+        .stream()
+        .filter(instrument -> instrument.type == type)
+        .sorted(Comparator.comparing(Instrument::getAssetFundamentals, Comparator.nullsLast(assetComparator)))
+        .limit(limit)
+        .collect(Collectors.toList());
+    }
   }
 
   public enum InstrumentObjType {
@@ -120,8 +210,10 @@ public class Instruments {
   @RequiredArgsConstructor
   public static class Instrument {
     private final String uuid;
+    private final Asset asset;
     private final InstrumentObjType type;
-    private final Object data;
+    private final Object rawData;
+    private final GetAssetFundamentalsResponse.StatisticResponse assetFundamentals;
   }
 
   private static Map<InstrumentObjType, Function<InstrumentsList, List<Message>>> INSTRUMENT_OBJ_UID_MAPPER =
@@ -157,8 +249,7 @@ public class Instruments {
     );
 
 
-  public void saveTradingInstrument(String rootPath) {
-    var instrumentsData = tradeAvailableInstruments();
+  public void saveTradingInstrument(InstrumentsList instrumentsData, String rootPath) {
 
     INSTRUMENT_OBJ_UID_MAPPER
       .map(instrumentObjTypeTuple -> instrumentObjTypeTuple.apply((objType, idGetter) -> {
@@ -177,26 +268,7 @@ public class Instruments {
       }));
 
 
-    var afResponses = assetFundamentsls(
-      java.util.stream.Stream.concat(
-          instrumentsData.shares.stream()
-            .filter(Share::getLiquidityFlag)
-            .filter(share -> !share.getForQualInvestorFlag())
-            .filter(Share::getBuyAvailableFlag)
-            .filter(Share::getSellAvailableFlag)
-            .filter(Share::getShortEnabledFlag)
-            .map(Share::getAssetUid),
-          instrumentsData.bonds.stream()
-            .filter(Bond::getLiquidityFlag)
-            .filter(share -> !share.getForQualInvestorFlag())
-            .filter(Bond::getBuyAvailableFlag)
-            .filter(Bond::getSellAvailableFlag)
-            .filter(Bond::getShortEnabledFlag)
-            .map(Bond::getAssetUid)
-        )
-
-        .collect(Collectors.toSet())
-    );
+    var afResponses = instrumentsData.assetFundamentals;
 
     var asfSaveSuccess = writeMessagesToJsonFile(afResponses, rootPath, "asset_fundamentals.json")
       .onFailure(error -> log.info("error saving asset fundamentals", error))
@@ -204,6 +276,16 @@ public class Instruments {
 
     if (asfSaveSuccess.isRight()) {
       log.info("saved asset_fundamentals to file:{}", asfSaveSuccess.get());
+    }
+
+    var tradingSchedulers = instrumentsData.tradingSchedules;
+
+    var tradingSchedulersSaveSuccess = writeMessagesToJsonFile(tradingSchedulers, rootPath, "trading_schedules.json")
+      .onFailure(error -> log.info("error saving trading schedules", error))
+      .toEither();
+
+    if (tradingSchedulersSaveSuccess.isRight()) {
+      log.info("saved trading schedules to file:{}", tradingSchedulersSaveSuccess.get());
     }
 
 

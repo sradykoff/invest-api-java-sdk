@@ -2,10 +2,9 @@ package ru.tinkoff.piapi.example;
 
 import io.vavr.Function2;
 import io.vavr.Tuple;
-import io.vavr.collection.PriorityQueue;
 import io.vavr.collection.Queue;
 import io.vavr.collection.Set;
-import io.vavr.collection.Stream;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.ta4j.core.Bar;
@@ -13,64 +12,79 @@ import org.ta4j.core.BarSeries;
 import org.ta4j.core.BaseBar;
 import org.ta4j.core.BaseBarSeries;
 import org.ta4j.core.Strategy;
-import org.ta4j.core.criteria.pnl.ReturnCriterion;
-import org.ta4j.core.num.DecimalNum;
-import ru.tinkoff.piapi.contract.v1.CandleInterval;
-import ru.tinkoff.piapi.contract.v1.GetAssetFundamentalsResponse;
-import ru.tinkoff.piapi.contract.v1.GetTradingStatusResponse;
+import ru.tinkoff.piapi.contract.v1.Candle;
 import ru.tinkoff.piapi.contract.v1.HistoricCandle;
-import ru.tinkoff.piapi.contract.v1.InstrumentStatus;
+import ru.tinkoff.piapi.contract.v1.LastPrice;
 import ru.tinkoff.piapi.contract.v1.MarketDataResponse;
-import ru.tinkoff.piapi.contract.v1.SecurityTradingStatus;
-import ru.tinkoff.piapi.contract.v1.Share;
-import ru.tinkoff.piapi.contract.v1.TradingSchedule;
+import ru.tinkoff.piapi.contract.v1.OrderBook;
+import ru.tinkoff.piapi.contract.v1.Trade;
+import ru.tinkoff.piapi.contract.v1.TradingStatus;
 import ru.tinkoff.piapi.core.ApiConfig;
 import ru.tinkoff.piapi.core.InvestApi;
 import ru.tinkoff.piapi.core.models.Quantity;
-import ru.tinkoff.piapi.core.stream.MarketDataSubscriptionService;
-import ru.tinkoff.piapi.core.stream.StreamProcessor;
 import ru.tinkoff.piapi.core.utils.DateUtils;
-import ru.tinkoff.piapi.core.utils.MapperUtils;
 
 import java.math.BigDecimal;
 import java.time.Duration;
-import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.time.temporal.ChronoUnit;
-import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+import static ru.tinkoff.piapi.core.utils.MapperUtils.quotationToBigDecimal;
+import static ru.tinkoff.piapi.example.ExampleUtils.printPortfolioBalance;
+import static ru.tinkoff.piapi.example.ExampleUtils.showOHLCPlot;
+import static ru.tinkoff.piapi.example.ExampleUtils.writeMessagesToJsonFile;
+
+@RequiredArgsConstructor
 public class Example {
 
-  private static final int MAX_CANDLE_DAY_HISTORY = 30;
-  private static final int MAX_CANDLE_MINUTES_HISTORY = 30;
   private static final Logger log = LoggerFactory.getLogger(Example.class);
-  private final InvestApi api;
-  private final ConcurrentMap<String, InstrumentTradingState> tradingStates;
-  private final ScheduledExecutorService executor;
 
-  public Example(InvestApi api) {
-    this.api = api;
-    this.tradingStates = new ConcurrentHashMap<>();
-    this.executor = Executors.newScheduledThreadPool(4);
-  }
+  private final MarketdataStreams.StreamView streamView;
+  private final BarSeries series;
+  private final Strategy strategy;
+  private final Orders.OrdersBox ordersBox;
+
 
   public static void main(String[] args) throws Exception {
 
     var api = InvestApi.create(ApiConfig.loadFromClassPath("example-bot.properties"));
+    var instruments = new Instruments(api.getInstrumentsService());
+    var marketdata = new Marketdata(api.getMarketDataService());
+    var marketStream = new MarketdataStreams(api.getMarketDataStreamService());
+    var operations = new Operations(api.getOperationsService(), api.getUserService());
+    var tradingInstrumentsAll = instruments.tradeAvailableInstruments();
+    instruments.saveTradingInstrument(tradingInstrumentsAll, "");
+    var users = new Users(api.getUserService());
+    var userInfo = users.getUserInfo();
+    var portfolio = operations.loadPortfolio(userInfo.getAccounts());
 
-    Instruments.saveTradingInstrument("",api);
+    printPortfolioBalance(portfolio);
+
+    var topShares = tradingInstrumentsAll.select(Instruments.InstrumentObjType.SHARE, 10);
+
+    var mdAllPrices = marketdata.getPricesAndCandles(new HashSet<>(topShares));
+
+//    writeMessagesToJsonFile(mdAllPrices, ".", "closePrices.json", Marketdata.InstrumentWithPrice::getClosePrice)
+//      .andFinally(() -> log.info("closePrices Saved"));
+
+    showOHLCPlot(mdAllPrices);
+
+
+    var streamViews = marketStream.streamInstrument(
+      "top10Shares",
+      topShares.stream()
+        .map(instrument -> Tuple.of(instrument, MD_LISTENER))
+        .collect(Collectors.toSet())
+    );
+
+
+
+    Thread.sleep(120_000L);
+
 
     System.exit(-1);
 
@@ -78,7 +92,6 @@ public class Example {
     //select trading instruments
 
 
-    var sharesFuture = bot.selectTradingShares(50);
     //setup statistic and watch
 
     //sharesFuture.thenCompose(shares -> api.getMarketDataService().getTradingStatus(share))
@@ -111,107 +124,8 @@ public class Example {
     //check operations
 
 
-    log.info("instrument:{}", sharesFuture.get());
   }
 
-  CompletableFuture<List<Share>> selectTradingShares(int totalSize) {
-    return api.runWithHeaders(
-      (call, headers) -> call.getInstrumentsService()
-        .getShares(InstrumentStatus.INSTRUMENT_STATUS_BASE)
-        .whenCompleteAsync(
-          (result, throwable) -> log.info("headers:{} trackingId:{}", headers, headers.get("x-tracking-id")),
-          executor
-        )
-        .thenApply(shares -> shares.stream()
-          .filter(Share::getLiquidityFlag)
-          .filter(share -> !share.getForQualInvestorFlag())
-          .filter(Share::getBuyAvailableFlag)
-          .filter(Share::getSellAvailableFlag)
-          .filter(Share::getShortEnabledFlag)
-          .collect(Collectors.toList()))
-
-        .thenApply(shares -> Tuple.of(
-          shares,
-          Stream.ofAll(shares).sliding(99)
-            .map(sharesChunk -> call.getInstrumentsService()
-              .getAssetFundamentals(
-                sharesChunk.toJavaStream()
-                  .map(Share::getAssetUid)
-                  .collect(Collectors.toSet())
-              ))))
-        .thenCompose(shareTuple -> shareTuple.map2(
-              assetsFutures -> assetsFutures
-                .reduceLeft((left, right) -> left
-                  .thenCompose(leftResult -> right
-                    .thenApply(
-                      rightResult -> leftResult.toBuilder()
-                        .addAllFundamentals(rightResult.getFundamentalsList())
-                        .build()
-                    )
-                  )
-                )
-            )
-            ._2
-            .thenApply(assetFundamentalsResponse -> {
-              var shares = shareTuple._1;
-              if (assetFundamentalsResponse.getFundamentalsCount() > 0) {
-                var topAssets = assetFundamentalsResponse
-                  .getFundamentalsList()
-                  .stream()
-                  .sorted(Comparator.comparingDouble(
-                        GetAssetFundamentalsResponse.StatisticResponse::getAverageDailyVolumeLast4Weeks
-                      )
-                      .thenComparingDouble(GetAssetFundamentalsResponse.StatisticResponse::getRoe)
-                      .thenComparingDouble(GetAssetFundamentalsResponse.StatisticResponse::getOneYearAnnualRevenueGrowthRate)
-
-                  )
-                  .limit(totalSize)
-                  .peek(statisticResponse -> log.info("asset:{}", statisticResponse))
-                  .map(GetAssetFundamentalsResponse.StatisticResponse::getAssetUid)
-                  .collect(Collectors.toSet());
-
-                return shares
-                  .stream()
-                  .filter(share -> topAssets.contains(share.getAssetUid()))
-                  .collect(Collectors.toList());
-              }
-              return shares
-                .stream()
-                .limit(totalSize)
-                .collect(Collectors.toList());
-            })
-        )
-    );
-  }
-
-  CompletableFuture<SecurityTradingStatus> getTradingStatus(String instrumentUid) {
-    return api.getMarketDataService().getTradingStatus(instrumentUid)
-      .thenApply(GetTradingStatusResponse::getTradingStatus);
-  }
-
-  CompletableFuture<List<TradingSchedule>> getTradingSchedules() {
-    return api.getInstrumentsService().getTradingSchedules(Instant.now().minus(7, ChronoUnit.DAYS), Instant.now());
-  }
-
-  void marketDataStream(
-    String id,
-    Consumer<MarketDataSubscriptionService> onSubscribe,
-    StreamProcessor<MarketDataResponse> processor,
-    Consumer<Throwable> onError
-  ) {
-    var mdStream = api.getMarketDataStreamService().newStream(
-      id,
-      processor,
-      onError
-    );
-    onSubscribe.accept(mdStream);
-  }
-
-  void positionsStream(
-
-  ) {
-
-  }
 
   class InstrumentTradingState {
     private final String id = ";";
@@ -235,10 +149,10 @@ public class Example {
         return new BaseBar(
           barDuration,
           barEndTime,
-          MapperUtils.quotationToBigDecimal(candle.getOpen()),
-          MapperUtils.quotationToBigDecimal(candle.getHigh()),
-          MapperUtils.quotationToBigDecimal(candle.getLow()),
-          MapperUtils.quotationToBigDecimal(candle.getClose()),
+          quotationToBigDecimal(candle.getOpen()),
+          quotationToBigDecimal(candle.getHigh()),
+          quotationToBigDecimal(candle.getLow()),
+          quotationToBigDecimal(candle.getClose()),
           BigDecimal.valueOf(candle.getVolume())
         );
       });
@@ -265,4 +179,31 @@ public class Example {
     bars.forEach(barModel -> series.addBar(func.apply(series, barModel)));
     return series;
   }
+
+  static MarketdataStreams.InstrumentMdListener MD_LISTENER = new MarketdataStreams.InstrumentMdListener() {
+    @Override
+    public void onCandleTick(Candle candle, MarketdataStreams.InstrumentMdContext ctx) {
+      log.info("Candle tick: {}", candle);
+    }
+
+    @Override
+    public void onTradeTick(Trade trade, MarketdataStreams.InstrumentMdContext ctx) {
+      log.info("Trade tick: {}", trade);
+    }
+
+    @Override
+    public void onLastPriceTick(LastPrice lastPrice, MarketdataStreams.InstrumentMdContext ctx) {
+      log.info("Last price tick: {}", lastPrice);
+    }
+
+    @Override
+    public void onOrderBookTick(OrderBook orderbook, MarketdataStreams.InstrumentMdContext ctx) {
+      log.info("Orderbook tick: {}", orderbook);
+    }
+
+    @Override
+    public void onTradingStatusTick(TradingStatus tradingStatus, MarketdataStreams.InstrumentMdContext ctx) {
+      log.info("Trading status tick: {}", tradingStatus);
+    }
+  };
 }
