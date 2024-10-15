@@ -102,6 +102,13 @@ public class InstrumentsService {
       .getExchangesList());
   }
 
+  @Nonnull
+  public List<TradingSchedule> getTradingSchedulesSync() {
+    return Helpers.unaryCall(() -> instrumentsBlockingStub.tradingSchedules(
+        TradingSchedulesRequest.getDefaultInstance())
+      .getExchangesList());
+  }
+
   /**
    * Получение (синхронное) расписания торгов торговой площадки.
    * <p>
@@ -724,6 +731,15 @@ public class InstrumentsService {
             .setFrom(DateUtils.instantToTimestamp(from))
             .setTo(DateUtils.instantToTimestamp(to))
             .build(),
+          observer))
+      .thenApply(TradingSchedulesResponse::getExchangesList);
+  }
+
+  @Nonnull
+  public CompletableFuture<List<TradingSchedule>> getTradingSchedules() {
+    return Helpers.<TradingSchedulesResponse>unaryAsyncCall(
+        observer -> instrumentsStub.tradingSchedules(
+          TradingSchedulesRequest.getDefaultInstance(),
           observer))
       .thenApply(TradingSchedulesResponse::getExchangesList);
   }
