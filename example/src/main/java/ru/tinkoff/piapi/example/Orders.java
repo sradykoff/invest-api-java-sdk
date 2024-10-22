@@ -89,6 +89,11 @@ public class Orders {
     public ExecutionStatus status(OrderCommand command) {
       return orders.get(command.id());
     }
+
+    @Override
+    public Instruments.Instrument instrument() {
+      return instrument;
+    }
   }
 
   static void applyState(
@@ -103,6 +108,9 @@ public class Orders {
   }
 
   public interface IOrdersBox {
+
+    Instruments.Instrument instrument();
+
     void execute(OrderCommand command);
 
     ExecutionStatus status(OrderCommand command);

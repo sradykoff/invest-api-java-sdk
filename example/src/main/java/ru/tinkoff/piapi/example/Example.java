@@ -4,6 +4,7 @@ import io.vavr.Function2;
 import io.vavr.Tuple;
 import io.vavr.collection.Queue;
 import io.vavr.collection.Set;
+import io.vavr.control.Try;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,7 +12,26 @@ import org.ta4j.core.Bar;
 import org.ta4j.core.BarSeries;
 import org.ta4j.core.BaseBar;
 import org.ta4j.core.BaseBarSeries;
+import org.ta4j.core.BaseStrategy;
+import org.ta4j.core.BaseTradingRecord;
+import org.ta4j.core.Rule;
 import org.ta4j.core.Strategy;
+import org.ta4j.core.TradingRecord;
+import org.ta4j.core.indicators.EMAIndicator;
+import org.ta4j.core.indicators.SMAIndicator;
+import org.ta4j.core.indicators.bollinger.BollingerBandsLowerIndicator;
+import org.ta4j.core.indicators.bollinger.BollingerBandsMiddleIndicator;
+import org.ta4j.core.indicators.helpers.ClosePriceIndicator;
+import org.ta4j.core.indicators.helpers.HighPriceIndicator;
+import org.ta4j.core.indicators.helpers.LowPriceIndicator;
+import org.ta4j.core.indicators.statistics.StandardDeviationIndicator;
+import org.ta4j.core.num.DecimalNum;
+import org.ta4j.core.rules.CrossedDownIndicatorRule;
+import org.ta4j.core.rules.CrossedUpIndicatorRule;
+import org.ta4j.core.rules.OverIndicatorRule;
+import org.ta4j.core.rules.StopGainRule;
+import org.ta4j.core.rules.StopLossRule;
+import org.ta4j.core.rules.UnderIndicatorRule;
 import ru.tinkoff.piapi.contract.v1.Candle;
 import ru.tinkoff.piapi.contract.v1.HistoricCandle;
 import ru.tinkoff.piapi.contract.v1.LastPrice;
@@ -30,7 +50,10 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static ru.tinkoff.piapi.core.utils.MapperUtils.quotationToBigDecimal;
@@ -43,10 +66,9 @@ public class Example {
 
   private static final Logger log = LoggerFactory.getLogger(Example.class);
 
-  private final MarketdataStreams.StreamView streamView;
-  private final BarSeries series;
-  private final Strategy strategy;
-  private final Orders.OrdersBox ordersBox;
+  private final List<MarketdataStreams.StreamView> streamViews;
+  private final Map<String, TradingState> tradeStates;
+  private final Map<String, Orders.IOrdersBox> ordersBox;
 
 
   public static void main(String[] args) throws Exception {
@@ -59,6 +81,7 @@ public class Example {
     var tradingInstrumentsAll = instruments.tradeAvailableInstruments();
     instruments.saveTradingInstrument(tradingInstrumentsAll, "");
     var users = new Users(api.getUserService());
+    var orders = new Orders(api.getOrdersService(), api.getOrdersStreamService());
     var userInfo = users.getUserInfo();
     var portfolio = operations.loadPortfolio(userInfo.getAccounts());
 
@@ -73,6 +96,7 @@ public class Example {
 
     showOHLCPlot(mdAllPrices);
 
+    String accountId = ""
 
     var streamViews = marketStream.streamInstrument(
       "top10Shares",
@@ -81,51 +105,102 @@ public class Example {
         .collect(Collectors.toSet())
     );
 
+    var orderBoxes = topShares.stream().map(instrument -> orders.orderBox(instrument, accountId))
+      .collect(Collectors.toMap(i -> i.instrument().getUuid(), v -> v));
 
 
-    Thread.sleep(120_000L);
-
+    var bot = new Example(streamViews, initTradingStates(mdAllPrices), orderBoxes);
+    boolean running = true;
+    while (running) {
+      bot.update();
+      bot.think();
+      bot.action();
+      if (bot.isFinished()) {
+        running = false;
+      }
+    }
 
     System.exit(-1);
-
-    var bot = new Example(api);
-    //select trading instruments
-
-
-    //setup statistic and watch
-
-    //sharesFuture.thenCompose(shares -> api.getMarketDataService().getTradingStatus(share))
-
-//    sharesFuture.thenCompose(
-//      shares -> shares.stream()
-//        .map(share -> Tuple.of(
-//          share,
-//          api.getMarketDataService().getCandles(share.getUid()
-//            , Instant.now().minus(MAX_CANDLE_DAY_HISTORY, ChronoUnit.DAYS)
-//            , Instant.now()
-//            , CandleInterval.CANDLE_INTERVAL_DAY
-//          ),
-//          api.getMarketDataService().getCandles(
-//            share.getUid(),
-//            Instant.now().minus(MAX_CANDLE_DAY_HISTORY, ChronoUnit.MINUTES),
-//            Instant.now(),
-//            CandleInterval.CANDLE_INTERVAL_1_MIN
-//          )))
-//
-//    )
-
-
-    //start trading
-
-    //check trading status
-
-    //stop trading
-
-    //check operations
 
 
   }
 
+  private void think() {
+
+  }
+
+  private void update() {
+    streamViews.forEach(streamView -> {
+      streamView.instruments()
+        .map(instrument -> streamView.get(instrument))
+        .forEach(mdCtx -> {
+          if (mdCtx.isPresent()) {
+            var md = mdCtx.get();
+            var instrument = md.getInstrument();
+            tradeStates.compute(instrument.getUuid(), (k, v) -> {
+              if (v == null) v = new TradingState(buildBarSeries(instrument.toString(), 500)
+                , new BaseTradingRecord());
+              return v.updateSeries(
+                barSeries -> md.getCandles().forEach(candle -> addCandle(barSeries, candle))
+              );
+            });
+          }
+        });
+
+    });
+  }
+
+  private static Map<String, TradingState> initTradingStates(List<Marketdata.InstrumentWithPrice> mdAllPrices) {
+    return mdAllPrices.stream()
+      .map(instrumentWithPrice -> {
+        var barSeries = buildBarFromHistory(instrumentWithPrice.getInstrument(), instrumentWithPrice.getCandles());
+        return Tuple.of(instrumentWithPrice.getInstrument().getUuid(), new TradingState(barSeries, new BaseTradingRecord()));
+      })
+      .collect(Collectors.toMap(v -> v._1, v -> v._2));
+  }
+
+
+  @RequiredArgsConstructor
+  static class TradingState {
+    private final BarSeries barSeries;
+    private final TradingRecord tradingRecord;
+    private final Strategy strategy;
+    private final io.vavr.collection.Set<TradingSignals> tradingSignals;
+
+    public TradingState(BarSeries barSeries, TradingRecord tradingRecord) {
+      this(
+        barSeries,
+        tradingRecord,
+        buildStrategy(barSeries, tradingRecord),
+        io.vavr.collection.HashSet.empty()
+      );
+    }
+
+
+    TradingState updateSeries(Consumer<BarSeries> modifier) {
+      modifier.accept(barSeries);
+      return this;
+    }
+
+    TradingState applySignal(TradingSignals signals) {
+      return new TradingState(barSeries, tradingRecord, strategy, tradingSignals.add(signals));
+    }
+
+    TradingSignals runStrategy() {
+      int endIndex = barSeries.getEndIndex();
+      var newBar = barSeries.getBar(endIndex);
+      if (strategy.shouldEnter(endIndex, tradingRecord)) {
+        log.info("Strategy should ENTER on {}", endIndex);
+
+      } else if (strategy.shouldExit(endIndex, tradingRecord)) {
+
+      }
+    }
+  }
+
+  enum TradingSignals {
+    ENTER, EXIT, ENTER_DONE, EXIT_DONE
+  }
 
   class InstrumentTradingState {
     private final String id = ";";
@@ -142,24 +217,6 @@ public class Example {
       this.strategies = strategies;
     }
 
-    InstrumentTradingState initHistoryMinuteCandle(List<HistoricCandle> candles) {
-      var barDuration = Duration.ofSeconds(60);
-      var barSeries = buildBarSeries(id + "-minute", 1000, candles, (series, candle) -> {
-        var barEndTime = ZonedDateTime.ofInstant(DateUtils.timestampToInstant(candle.getTime()), ZoneId.systemDefault());
-        return new BaseBar(
-          barDuration,
-          barEndTime,
-          quotationToBigDecimal(candle.getOpen()),
-          quotationToBigDecimal(candle.getHigh()),
-          quotationToBigDecimal(candle.getLow()),
-          quotationToBigDecimal(candle.getClose()),
-          BigDecimal.valueOf(candle.getVolume())
-        );
-      });
-      this.minuteBarSeries = barSeries;
-      return this;
-    }
-
 //    PriorityQueue<Strategy> toPriorityQueue() {
 //      new ReturnCriterion().calculate(series, tradingRecord)
 //      return strategies.toPriorityQueue(Comparator.comparingDouble(strategy->strategy));
@@ -172,6 +229,100 @@ public class Example {
     SYNC, SYNC_COMPLETE,
   }
 
+  static BarSeries buildBarFromHistory(Instruments.Instrument instrument, List<HistoricCandle> candles) {
+    var barDuration = Duration.ofMinutes(1);
+    var barSeries = buildBarSeries(instrument.toString(), 500, candles, (series, candle) -> {
+      var barEndTime = ZonedDateTime.ofInstant(DateUtils.timestampToInstant(candle.getTime()), ZoneId.systemDefault());
+      return new BaseBar(
+        barDuration,
+        barEndTime,
+        quotationToBigDecimal(candle.getOpen()),
+        quotationToBigDecimal(candle.getHigh()),
+        quotationToBigDecimal(candle.getLow()),
+        quotationToBigDecimal(candle.getClose()),
+        BigDecimal.valueOf(candle.getVolume())
+      );
+    });
+    return barSeries;
+  }
+
+  static BarSeries addCandle(BarSeries series, Candle candle) {
+    var lastCandleEndOpt = Optional.of(series)
+      .filter(s -> s.getBarCount() > 0)
+      .map(BarSeries::getLastBar)
+      .map(Bar::getEndTime);
+    var candleTime = ZonedDateTime.ofInstant(DateUtils.timestampToInstant(candle.getTime()), ZoneId.systemDefault());
+    return lastCandleEndOpt.map(lastCandleEnd -> {
+        Try.run(() -> {
+            if (candleTime.isEqual(lastCandleEnd)) {
+              series.addBar(
+                new BaseBar(
+                  Duration.ofMinutes(1),
+                  candleTime,
+                  DecimalNum.valueOf(quotationToBigDecimal(candle.getOpen())),
+                  DecimalNum.valueOf(quotationToBigDecimal(candle.getHigh())),
+                  DecimalNum.valueOf(quotationToBigDecimal(candle.getLow())),
+                  DecimalNum.valueOf(quotationToBigDecimal(candle.getClose())),
+                  DecimalNum.valueOf(candle.getVolume()),
+                  DecimalNum.valueOf(0)
+                ),
+                true
+              );
+            } else {
+              series.addBar(
+                Duration.ofMinutes(1),
+                candleTime,
+                DecimalNum.valueOf(quotationToBigDecimal(candle.getOpen())),
+                DecimalNum.valueOf(quotationToBigDecimal(candle.getHigh())),
+                DecimalNum.valueOf(quotationToBigDecimal(candle.getLow())),
+                DecimalNum.valueOf(quotationToBigDecimal(candle.getClose())),
+                DecimalNum.valueOf(candle.getVolume()),
+                DecimalNum.valueOf(0)
+              );
+            }
+          })
+          .onFailure(error -> log.error("cannot apply state update", error))
+          .andFinally(() -> log.debug("last state index:{}", series.getEndIndex()))
+        ;
+        return series;
+      })
+      .orElse(series);
+  }
+
+  private static Strategy buildStrategy(BarSeries series, TradingRecord tradingRecord) {
+    var minBarCount = 10;
+    var takeProfitValue = DecimalNum.valueOf(2);
+    ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
+    LowPriceIndicator lowPriceIndicator = new LowPriceIndicator(series);
+
+    HighPriceIndicator highPriceIndicator = new HighPriceIndicator(series);
+    SMAIndicator sma = new SMAIndicator(closePrice, minBarCount);
+    EMAIndicator ema = new EMAIndicator(closePrice, minBarCount);
+    BollingerBandsMiddleIndicator middleIndicator = new BollingerBandsMiddleIndicator(ema);
+    StandardDeviationIndicator standardDeviationIndicator = new StandardDeviationIndicator(closePrice, minBarCount);
+    BollingerBandsLowerIndicator lowerIndicator = new BollingerBandsLowerIndicator(middleIndicator, standardDeviationIndicator);
+
+    Rule entrySignal1 = new OverIndicatorRule(closePrice, sma);
+    Rule entrySignal2 = new UnderIndicatorRule(lowPriceIndicator, lowerIndicator);
+    Rule exitSignal = new CrossedDownIndicatorRule(closePrice, lowerIndicator);
+    Rule exitSignal2 = new StopGainRule(closePrice, takeProfitValue);
+
+    Rule sentrySignal = new CrossedDownIndicatorRule(lowPriceIndicator, lowerIndicator);
+    Rule sentrySignal2 = new OverIndicatorRule(highPriceIndicator, lowPriceIndicator);
+
+    Rule sexitSignal = new CrossedUpIndicatorRule(closePrice, lowerIndicator);
+    Rule sexitSignal2 = new StopLossRule(closePrice, takeProfitValue);
+
+    return new BaseStrategy(entrySignal1.and(entrySignal2), exitSignal.or(exitSignal2))
+      .or(new BaseStrategy(sentrySignal.and(sentrySignal2), sexitSignal.or(sexitSignal2)))
+      ;
+  }
+
+  static <T> BarSeries buildBarSeries(String nm, int maxBarCount) {
+    BarSeries series = new BaseBarSeries(nm);
+    series.setMaximumBarCount(maxBarCount);
+    return series;
+  }
 
   static <T> BarSeries buildBarSeries(String nm, int maxBarCount, List<T> bars, Function2<BarSeries, T, Bar> func) {
     BarSeries series = new BaseBarSeries(nm);
