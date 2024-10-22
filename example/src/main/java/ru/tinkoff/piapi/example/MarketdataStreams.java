@@ -2,6 +2,7 @@ package ru.tinkoff.piapi.example;
 
 import io.vavr.Tuple2;
 import io.vavr.collection.Stream;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.With;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +17,7 @@ import ru.tinkoff.piapi.core.stream.MarketDataStreamService;
 import ru.tinkoff.piapi.core.stream.MarketDataSubscriptionService;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -41,7 +43,10 @@ public class MarketdataStreams {
         batch.forEach(instrumentHandler -> concurrentMap
           .put(
             instrumentHandler._1.getUuid(),
-            new AtomicReference<>(EMPTY.withListener(instrumentHandler._2))
+            new AtomicReference<>(EMPTY
+              .withListener(instrumentHandler._2)
+              .withInstrument(instrumentHandler._1)
+            )
           ));
 
         var instruments = batch.map(t -> t.apply((instrument, consumer) -> instrument));
@@ -108,22 +113,34 @@ public class MarketdataStreams {
         instrumentId = tradingStatus.getInstrumentUid();
         break;
       case SUBSCRIBE_CANDLES_RESPONSE:
+        updateFunc = dataHolder -> dataHolder.onMdResponse(response);
+        notifier = dataHolder -> dataHolder.publish(response);
         var candleResponse = response.getSubscribeCandlesResponse();
-        return;
+        break;
       case SUBSCRIBE_INFO_RESPONSE:
+        updateFunc = dataHolder -> dataHolder.onMdResponse(response);
+        notifier = dataHolder -> dataHolder.publish(response);
         var infoResponse = response.getSubscribeInfoResponse();
-        return;
+        break;
       case SUBSCRIBE_LAST_PRICE_RESPONSE:
+        updateFunc = dataHolder -> dataHolder.onMdResponse(response);
+        notifier = dataHolder -> dataHolder.publish(response);
         var lastPriceResponse = response.getSubscribeLastPriceResponse();
-        return;
+        break;
       case SUBSCRIBE_ORDER_BOOK_RESPONSE:
+        updateFunc = dataHolder -> dataHolder.onMdResponse(response);
+        notifier = dataHolder -> dataHolder.publish(response);
         var orderBookResponse = response.getSubscribeOrderBookResponse();
-        return;
+        break;
       case SUBSCRIBE_TRADES_RESPONSE:
+        updateFunc = dataHolder -> dataHolder.onMdResponse(response);
+        notifier = dataHolder -> dataHolder.publish(response);
         var tradesResponse = response.getSubscribeTradesResponse();
-        return;
+        break;
       case PING:
-        return;
+        updateFunc = dataHolder -> dataHolder.onMdResponse(response);
+        notifier = dataHolder -> dataHolder.publish(response);
+        break;
     }
     var holder = concurrentMap.computeIfAbsent(instrumentId, k -> new AtomicReference<>(EMPTY));
 
@@ -142,10 +159,18 @@ public class MarketdataStreams {
     public Stream<Instruments.Instrument> instruments() {
       return instruments;
     }
+
+    @Override
+    public Optional<InstrumentMdContext> get(Instruments.Instrument instrument) {
+      return Optional.ofNullable(concurrentMap.get(instrument.getUuid()))
+        .map(AtomicReference::get);
+    }
   }
 
   private static final DataHolder EMPTY = new DataHolder(
     null,
+    null,
+    io.vavr.collection.List.empty(),
     io.vavr.collection.List.empty(),
     io.vavr.collection.List.empty(),
     io.vavr.collection.List.empty(),
@@ -155,15 +180,18 @@ public class MarketdataStreams {
   );
 
   @RequiredArgsConstructor
+  @Getter
   @With
   static class DataHolder implements InstrumentMdContext {
 
+    private final Instruments.Instrument instrument;
     private final InstrumentMdListener listener;
     private final io.vavr.collection.List<Candle> candles;
     private final io.vavr.collection.List<Trade> trades;
     private final io.vavr.collection.List<LastPrice> lastPrices;
     private final io.vavr.collection.List<OrderBook> orderbooks;
     private final io.vavr.collection.List<TradingStatus> tradingStatuses;
+    private final io.vavr.collection.List<MarketDataResponse> other;
     private final int version;
 
 
@@ -208,6 +236,14 @@ public class MarketdataStreams {
       return withTradingStatuses(buffer).withVersion(version + 1);
     }
 
+    public DataHolder onMdResponse(MarketDataResponse response) {
+      var buffer = other.append(response);
+      if (buffer.size() > 100) {
+        buffer = buffer.dropRight(1);
+      }
+      return withOther(buffer).withVersion(version + 1);
+    }
+
     public void publish(Candle candle) {
       if (listener != null) {
         listener.onCandleTick(candle, this);
@@ -237,10 +273,27 @@ public class MarketdataStreams {
         listener.onTradingStatusTick(tradingStatus, this);
       }
     }
+
+    public void publish(MarketDataResponse response) {
+      if (listener != null) {
+        listener.onMdResponse(response, this);
+      }
+    }
   }
 
   public interface InstrumentMdContext {
 
+    Instruments.Instrument getInstrument();
+
+    io.vavr.collection.List<Candle> getCandles();
+
+    io.vavr.collection.List<Trade> getTrades();
+
+    io.vavr.collection.List<LastPrice> getLastPrices();
+
+    io.vavr.collection.List<OrderBook> getOrderbooks();
+
+    io.vavr.collection.List<TradingStatus> getTradingStatuses();
   }
 
   public interface InstrumentMdListener {
@@ -258,9 +311,16 @@ public class MarketdataStreams {
 
     default void onTradingStatusTick(TradingStatus tradingStatus, InstrumentMdContext ctx) {
     }
+
+    default void onMdResponse(MarketDataResponse response, InstrumentMdContext ctx) {
+
+    }
   }
 
   public interface StreamView {
 
+    Stream<Instruments.Instrument> instruments();
+
+    Optional<InstrumentMdContext> get(Instruments.Instrument instrument);
   }
 }
