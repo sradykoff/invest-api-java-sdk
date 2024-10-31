@@ -2,9 +2,11 @@ package ru.tinkoff.piapi.example;
 
 import io.vavr.Function2;
 import io.vavr.Tuple;
+import io.vavr.Tuple2;
 import io.vavr.collection.Queue;
 import io.vavr.collection.Set;
 import io.vavr.control.Try;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +39,8 @@ import ru.tinkoff.piapi.contract.v1.HistoricCandle;
 import ru.tinkoff.piapi.contract.v1.LastPrice;
 import ru.tinkoff.piapi.contract.v1.MarketDataResponse;
 import ru.tinkoff.piapi.contract.v1.OrderBook;
+import ru.tinkoff.piapi.contract.v1.OrderDirection;
+import ru.tinkoff.piapi.contract.v1.PostOrderAsyncResponse;
 import ru.tinkoff.piapi.contract.v1.Trade;
 import ru.tinkoff.piapi.contract.v1.TradingStatus;
 import ru.tinkoff.piapi.core.ApiConfig;
@@ -48,10 +52,13 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -69,6 +76,7 @@ public class Example {
   private final List<MarketdataStreams.StreamView> streamViews;
   private final Map<String, TradingState> tradeStates;
   private final Map<String, Orders.IOrdersBox> ordersBox;
+  private boolean isFinished = false;
 
 
   public static void main(String[] args) throws Exception {
@@ -96,7 +104,13 @@ public class Example {
 
     showOHLCPlot(mdAllPrices);
 
-    String accountId = ""
+    String accountId = portfolio.getPortfolios()
+      .filter(es -> es._2._1.getTotalAmountCurrencies().getValue().compareTo(BigDecimal.ZERO) > 0)
+      .maxBy(Comparator.comparingLong(es -> es._2._1.getTotalAmountCurrencies().getValue().longValue()))
+      .map(Tuple2::_1)
+      .getOrElseThrow(() -> new RuntimeException("No account with money"));
+
+    log.info("selected account id:{}", accountId);
 
     var streamViews = marketStream.streamInstrument(
       "top10Shares",
@@ -115,9 +129,10 @@ public class Example {
       bot.update();
       bot.think();
       bot.action();
-      if (bot.isFinished()) {
+      if (bot.isFinished) {
         running = false;
       }
+      Thread.sleep(10_000);
     }
 
     System.exit(-1);
@@ -125,7 +140,67 @@ public class Example {
 
   }
 
+  private void action() {
+    tradeStates
+      .entrySet()
+      .stream()
+      .filter(v -> !v.getValue().tradingSignals.isEmpty())
+      .forEach(tradingStateEs -> {
+        var tradingState = tradingStateEs.getValue();
+        var signals = tradingState.tradingSignals;
+        var iorderBox = ordersBox.get(tradingStateEs.getKey());
+        signals
+          .findLast(st -> st.signalType == TradingSignalType.ENTER)
+          .peek(signal -> {
+            var cmd = new Orders.LimitOrderCommand(
+              OrderDirection.ORDER_DIRECTION_BUY,
+              Quantity.ONE,
+              new Quantity(signal.closePrice)
+            );
+            iorderBox.execute(cmd);
+            var deadline = System.currentTimeMillis() + Duration.ofMinutes(1).toMillis();
+            while (System.currentTimeMillis() < deadline) {
+              var status = iorderBox.status(cmd);
+              if (status.getResultCall().isLeft()) {
+                this.isFinished = true;
+              }
+              if (status.getResultCall().isRight() && status.getResultCall().get() instanceof CompletableFuture) {
+                var sleepDone = Try.run(() -> Thread.sleep(1_000)).isSuccess();
+                this.isFinished = sleepDone;
+                if (!sleepDone) break;
+              } else if (status.getResultCall().isRight() && status.getResultCall().get() instanceof PostOrderAsyncResponse) {
+                var postOrderAsyncResponse = (PostOrderAsyncResponse) status.getResultCall().get();
+                log.info("order complete", postOrderAsyncResponse);
+              }
+            }
+          });
+
+        signals.findLast(st -> st.signalType == TradingSignalType.EXIT)
+          .peek(signal -> {
+            iorderBox.execute(new Orders.LimitOrderCommand(
+              OrderDirection.ORDER_DIRECTION_SELL,
+              Quantity.ONE,
+              new Quantity(signal.closePrice)
+            ));
+          });
+
+
+      });
+
+  }
+
   private void think() {
+
+    List<Tuple2<String, TradingSignal>> signals = new ArrayList<>();
+    tradeStates.forEach((instrumentUid, state) -> {
+      var signal = state.runStrategy();
+      signals.add(Tuple.of(instrumentUid, signal));
+    });
+
+    signals.forEach(tuple -> tuple.apply((instrumentUid, signal) -> {
+      tradeStates.computeIfPresent(instrumentUid, (k, v) -> v.applySignal(signal));
+      return null;
+    }));
 
   }
 
@@ -165,7 +240,7 @@ public class Example {
     private final BarSeries barSeries;
     private final TradingRecord tradingRecord;
     private final Strategy strategy;
-    private final io.vavr.collection.Set<TradingSignals> tradingSignals;
+    private final io.vavr.collection.Set<TradingSignal> tradingSignals;
 
     public TradingState(BarSeries barSeries, TradingRecord tradingRecord) {
       this(
@@ -182,24 +257,36 @@ public class Example {
       return this;
     }
 
-    TradingState applySignal(TradingSignals signals) {
+    TradingState applySignal(TradingSignal signals) {
       return new TradingState(barSeries, tradingRecord, strategy, tradingSignals.add(signals));
     }
 
-    TradingSignals runStrategy() {
+    TradingSignal runStrategy() {
+      if (barSeries.isEmpty()) return new TradingSignal(TradingSignalType.WAIT, null);
       int endIndex = barSeries.getEndIndex();
       var newBar = barSeries.getBar(endIndex);
+      var closePrice = (BigDecimal) newBar.getClosePrice().getDelegate();
       if (strategy.shouldEnter(endIndex, tradingRecord)) {
         log.info("Strategy should ENTER on {}", endIndex);
-
+        return new TradingSignal(TradingSignalType.ENTER, closePrice);
       } else if (strategy.shouldExit(endIndex, tradingRecord)) {
-
+        return new TradingSignal(TradingSignalType.EXIT, closePrice);
       }
+      return new TradingSignal(TradingSignalType.WAIT, closePrice);
     }
   }
 
-  enum TradingSignals {
-    ENTER, EXIT, ENTER_DONE, EXIT_DONE
+  @RequiredArgsConstructor
+  @Getter
+  static class TradingSignal {
+    private final TradingSignalType signalType;
+    private final BigDecimal closePrice;
+  }
+
+  enum TradingSignalType {
+    WAIT, ENTER, EXIT, ENTER_DONE, EXIT_DONE,
+    ENTER_IN_PROGRESS,
+    EXIT_IN_PROGRESS
   }
 
   class InstrumentTradingState {

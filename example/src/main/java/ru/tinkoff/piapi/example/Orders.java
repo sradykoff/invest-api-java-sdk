@@ -70,13 +70,13 @@ public class Orders {
           ).whenComplete((result, error) -> {
             if (error != null) {
               log.error("error post order", error);
-              applyState(orders, command, status -> status.withResultCall(Either.right(error)));
+              applyState(orders, command, status -> status.withResultCall(Either.left(error)));
             } else {
-              applyState(orders, command, status -> status.withResultCall(Either.left(result)));
+              applyState(orders, command, status -> status.withResultCall(Either.right(result)));
             }
           });
           applyState(orders, command, status -> (Objects.isNull(status.resultCall))
-            ? status.withResultCall(Either.left(call)) : status);
+            ? status.withResultCall(Either.right(call)) : status);
         } catch (Exception error) {
           log.error("error post order", error);
           orders.put(command.id(), new ExecutionStatus(command, Either.right(error), List.empty()));
@@ -172,7 +172,7 @@ public class Orders {
   @RequiredArgsConstructor
   public static class ExecutionStatus {
     private final OrderCommand command;
-    private final Either<Object, Throwable> resultCall;
+    private final Either<Throwable, Object> resultCall;
     private final List<Object> executionLog;
   }
 
