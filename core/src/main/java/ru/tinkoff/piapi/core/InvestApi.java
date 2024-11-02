@@ -5,6 +5,7 @@ import io.grpc.Channel;
 import io.grpc.ClientCall;
 import io.grpc.ClientInterceptor;
 import io.grpc.ClientInterceptors;
+import io.grpc.Context;
 import io.grpc.ForwardingClientCall;
 import io.grpc.ForwardingClientCallListener;
 import io.grpc.ManagedChannel;
@@ -26,13 +27,16 @@ import java.io.IOException;
 import java.time.Duration;
 import java.time.format.DateTimeParseException;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -43,12 +47,10 @@ import java.util.stream.Collectors;
  */
 public class InvestApi {
 
-  private static final String configResourceName = "config.properties";
-  private static final String defaultAppName = "tinkoff.invest-api-java-sdk";
-  private static final Properties props;
+  private static final ApiConfig config;
 
   static {
-    props = loadProps();
+    config = ApiConfig.defaultConfig();
   }
 
   private final Channel channel;
@@ -144,6 +146,11 @@ public class InvestApi {
     return new InvestApi(defaultChannel(token, appName), false, false);
   }
 
+  @Nonnull
+  public static InvestApi create(ApiConfig config) {
+    return new InvestApi(defaultChannel(config), false, false);
+  }
+
   /**
    * Создаёт экземпляр API в режиме "только для чтения"
    * с использованием готовой конфигурации GRPC-соединения.
@@ -213,9 +220,8 @@ public class InvestApi {
    */
   @Nonnull
   public static InvestApi createSandbox(@Nonnull String token) {
-    var target = Optional.ofNullable(System.getenv("TINKOFF_INVEST_API_TARGET_SANDBOX"))
-      .orElseGet(() -> props.getProperty("ru.tinkoff.piapi.core.sandbox.target"));
-    return new InvestApi(defaultChannel(token, defaultAppName, target), false, true);
+    var target = config.getSandboxTarget();
+    return new InvestApi(defaultChannel(token, config.getAppNm(), target), false, true);
   }
 
   /**
@@ -231,82 +237,57 @@ public class InvestApi {
    */
   @Nonnull
   public static InvestApi createSandbox(@Nonnull String token, @Nonnull String appName) {
-    var target = Optional.ofNullable(System.getenv("TINKOFF_INVEST_API_TARGET_SANDBOX"))
-      .orElseGet(() -> props.getProperty("ru.tinkoff.piapi.core.sandbox.target"));
+    var target = config.getSandboxTarget();
     return new InvestApi(defaultChannel(token, appName, target), false, true);
   }
 
   @Nonnull
   public static Channel defaultChannel(String token, String appName, String target) {
+    return defaultChannel(config.withToken(token).withAppNm(appName).withTarget(target));
+  }
+
+  @Nonnull
+  public static Channel defaultChannel(ApiConfig config) {
     var headers = new Metadata();
-    addAuthHeader(headers, token);
-    addAppNameHeader(headers, appName);
+    addAuthHeader(headers, Objects.requireNonNull(config.getToken()));
+    addAppNameHeader(headers, config.getAppNm());
 
-    Duration connectionTimeout;
-    try {
-      var availableTimeOutValue = Optional.ofNullable(System.getenv("TINKOFF_INVEST_API_CONNECTION_TIMEOUT"))
-        .orElseGet(() -> props.getProperty("ru.tinkoff.piapi.core.connection-timeout"));
-      connectionTimeout = Duration.parse(availableTimeOutValue);
-    } catch (DateTimeParseException e) {
-      connectionTimeout = Duration.parse(props.getProperty("ru.tinkoff.piapi.core.connection-timeout"));
-    }
-
-    Duration requestTimeout;
-    try {
-      var availableTimeOutValue = Optional.ofNullable(System.getenv("TINKOFF_INVEST_API_REQUEST_TIMEOUT"))
-        .orElseGet(() -> props.getProperty("ru.tinkoff.piapi.core.request-timeout"));
-      requestTimeout = Duration.parse(availableTimeOutValue);
-    } catch (DateTimeParseException e) {
-      requestTimeout = Duration.parse(props.getProperty("ru.tinkoff.piapi.core.request-timeout"));
-    }
     return NettyChannelBuilder
-      .forTarget(target)
+      .forTarget(config.getTarget())
       .intercept(
         new LoggingInterceptor(),
         MetadataUtils.newAttachHeadersInterceptor(headers),
-        new TimeoutInterceptor(requestTimeout))
+        new TimeoutInterceptor(config.getRequestTimeoutMs()))
       .withOption(
         ChannelOption.CONNECT_TIMEOUT_MILLIS,
-        (int) connectionTimeout.toMillis()) // Намерено сужаем тип - предполагается,
+        (int) config.getConnectionTimeoutMs()) // Намерено сужаем тип - предполагается,
       // что таймаут имеет разумную величину.
       .useTransportSecurity()
-      .keepAliveTimeout(60, TimeUnit.SECONDS)
+      .keepAliveTime(config.getKeepAliveSec(), TimeUnit.SECONDS)
+      .keepAliveTimeout(config.getKeepAliveTimeoutSec(), TimeUnit.SECONDS)
       .maxInboundMessageSize(16777216) // 16 Mb
       .build();
   }
 
   @Nonnull
   public static Channel defaultChannel(String token, String appName) {
-    var target = Optional.ofNullable(System.getenv("TINKOFF_INVEST_API_TARGET"))
-      .orElseGet(() -> props.getProperty("ru.tinkoff.piapi.core.api.target"));
+    var target = config.getTarget();
     return defaultChannel(token, appName, target);
   }
 
   @Nonnull
   public static Channel defaultChannel(String token) {
-    var target = Optional.ofNullable(System.getenv("TINKOFF_INVEST_API_TARGET"))
-      .orElseGet(() -> props.getProperty("ru.tinkoff.piapi.core.api.target"));
-    return defaultChannel(token, defaultAppName, target);
-  }
-
-  public static void addAppNameHeader(@Nonnull Metadata metadata, @Nullable String appName) {
-    var key = Metadata.Key.of("x-app-name", Metadata.ASCII_STRING_MARSHALLER);
-    metadata.put(key, appName == null ? defaultAppName : appName);
-  }
-
-  public static void addAuthHeader(@Nonnull Metadata metadata, @Nonnull String token) {
-    var authKey = Metadata.Key.of("Authorization", Metadata.ASCII_STRING_MARSHALLER);
-    metadata.put(authKey, "Bearer " + token);
+    var target = config.getTarget();
+    return defaultChannel(token, config.getAppNm(), target);
   }
 
   /**
    * Запуск функции апи с поддержкой получения заголовков grpc
-   *
-   * @param api - фукнция (InvestApi call, HeadersWrapper headers) -&gt; T
-   *            При вызове через обертку call  в функции, после выполнения грпц вызова,
-   *            получить заголовки сервера headers.get("x-tracing-id")
-   * @param <T> - тип возвращаемого значения
+   * @param api - фукнция (InvestApi call, HeadersWrapper headers) -> T
+   * При вызове через обертку call  в функции, после выполнения грпц вызова,
+   * получить заголовки сервера headers.get("x-tracing-id")
    * @return результат выполнения api
+   * @param <T> - тип возвращаемого значения
    */
   public <T> T runWithHeaders(BiFunction<InvestApi, HeadersWrapper, T> api) {
     var headersWrapper = new HeadersWrapper();
@@ -315,15 +296,14 @@ public class InvestApi {
     return api.apply(new InvestApi(intercepted, readonlyMode, sandboxMode), headersWrapper);
   }
 
-  private static Properties loadProps() {
-    var loader = Thread.currentThread().getContextClassLoader();
-    var props = new Properties();
-    try (var resourceStream = loader.getResourceAsStream(configResourceName)) {
-      props.load(resourceStream);
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
-    return props;
+  public static void addAppNameHeader(@Nonnull Metadata metadata, @Nullable String appName) {
+    var key = Metadata.Key.of("x-app-name", Metadata.ASCII_STRING_MARSHALLER);
+    metadata.put(key, appName == null ? config.getAppNm() : appName);
+  }
+
+  public static void addAuthHeader(@Nonnull Metadata metadata, @Nonnull String token) {
+    var authKey = Metadata.Key.of("Authorization", Metadata.ASCII_STRING_MARSHALLER);
+    metadata.put(authKey, "Bearer " + token);
   }
 
   /**
@@ -460,17 +440,17 @@ public class InvestApi {
   }
 
   static class TimeoutInterceptor implements ClientInterceptor {
-    private final Duration timeout;
+    private final long timeoutMs;
 
-    public TimeoutInterceptor(Duration timeout) {
-      this.timeout = timeout;
+    public TimeoutInterceptor(long timeoutMs) {
+      this.timeoutMs = timeoutMs;
     }
 
     @Override
     public <ReqT, RespT> ClientCall<ReqT, RespT> interceptCall(
       MethodDescriptor<ReqT, RespT> method, CallOptions callOptions, Channel next) {
       if (method.getType() == MethodDescriptor.MethodType.UNARY) {
-        callOptions = callOptions.withDeadlineAfter(this.timeout.toMillis(), TimeUnit.MILLISECONDS);
+        callOptions = callOptions.withDeadlineAfter(timeoutMs, TimeUnit.MILLISECONDS);
       }
 
       return next.newCall(method, callOptions);
@@ -519,7 +499,7 @@ public class InvestApi {
   static class LoggingClientCallListener<RespT>
     extends ForwardingClientCallListener.SimpleForwardingClientCallListener<RespT> {
 
-    private static final Metadata.Key<String> trackingIdKey =
+    static final Metadata.Key<String> TRACKING_ID_KEY =
       Metadata.Key.of("x-tracking-id", Metadata.ASCII_STRING_MARSHALLER);
 
     private final Logger logger;
@@ -537,7 +517,7 @@ public class InvestApi {
 
     @Override
     public void onHeaders(Metadata headers) {
-      lastTrackingId = headers.get(trackingIdKey);
+      lastTrackingId = headers.get(TRACKING_ID_KEY);
       delegate().onHeaders(headers);
     }
 
