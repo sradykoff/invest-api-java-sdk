@@ -287,8 +287,6 @@ public class Instruments {
     if (tradingSchedulersSaveSuccess.isRight()) {
       log.info("saved trading schedules to file:{}", tradingSchedulersSaveSuccess.get());
     }
-
-
   }
 
 }

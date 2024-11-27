@@ -49,6 +49,21 @@ public class Quantity {
     return new Quantity(mapper.apply(this.value));
   }
 
+  public boolean isEquals(Quantity quantity) {
+    if (quantity == null) return false;
+    return this.value.compareTo(quantity.value) == 0;
+  }
+
+  public boolean isLess(Quantity quantity) {
+    if (quantity == null) return false;
+    return this.value.compareTo(quantity.value) < 0;
+  }
+
+  public boolean isLessOrEquals(Quantity quantity) {
+    if (quantity == null) return false;
+    return this.value.compareTo(quantity.value) <= 0;
+  }
+
   public Quotation toQuotation() {
     return Quotation.newBuilder()
       .setUnits(value.longValue())
@@ -56,4 +71,7 @@ public class Quantity {
       .build();
   }
 
+  public Quantity abs() {
+    return mapValue(BigDecimal::abs);
+  }
 }
