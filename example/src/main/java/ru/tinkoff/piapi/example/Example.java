@@ -1,6 +1,7 @@
 package ru.tinkoff.piapi.example;
 
 import io.vavr.Function2;
+import io.vavr.Lazy;
 import io.vavr.Tuple;
 import io.vavr.Tuple2;
 import io.vavr.collection.Queue;
@@ -81,61 +82,112 @@ public class Example {
 
   public static void main(String[] args) throws Exception {
 
-    var api = InvestApi.create(ApiConfig.loadFromClassPath("example-bot.properties"));
-    var instruments = new Instruments(api.getInstrumentsService());
-    var marketdata = new Marketdata(api.getMarketDataService());
-    var marketStream = new MarketdataStreams(api.getMarketDataStreamService());
-    var operations = new Operations(api.getOperationsService(), api.getUserService());
-    var tradingInstrumentsAll = instruments.tradeAvailableInstruments();
-    instruments.saveTradingInstrument(tradingInstrumentsAll, "");
-    var users = new Users(api.getUserService());
-    var orders = new Orders(api.getOrdersService(), api.getOrdersStreamService());
-    var userInfo = users.getUserInfo();
-    var portfolio = operations.loadPortfolio(userInfo.getAccounts());
+    var apiCallback = new ExampleUtils.ApiExampleCallback() {
 
-    printPortfolioBalance(portfolio);
+      Lazy<InvestApi> investApiLazy = Lazy.of(() -> InvestApi.create(ApiConfig
+        .loadFromClassPath("example-bot.properties")));
 
-    var topShares = tradingInstrumentsAll.select(Instruments.InstrumentObjType.SHARE, 10);
+      @Override
+      public void onInit() {
+        var api = investApiLazy.get();
+      }
 
-    var mdAllPrices = marketdata.getPricesAndCandles(new HashSet<>(topShares));
+      @Override
+      public void onSnapshot(ExampleUtils.SnapshotCommand cmd) {
+        var api = investApiLazy.get();
+        var instruments = new Instruments(api.getInstrumentsService());
+        var operations = new Operations(api.getOperationsService(), api.getUserService());
+        var users = new Users(api.getUserService());
+        var marketdata = new Marketdata(api.getMarketDataService());
+        var userInfo = users.getUserInfo();
+        var portfolio = operations.loadPortfolio(userInfo.getAccounts());
+        printPortfolioBalance(portfolio);
+
+        var tradingInstrumentsAll = instruments.tradeAvailableInstruments();
+        instruments.saveTradingInstrument(tradingInstrumentsAll, cmd.outRootPath);
+        var topShares = tradingInstrumentsAll.select(Instruments.InstrumentObjType.SHARE, 10);
+        var mdAllPrices = marketdata.getPricesAndCandles(new HashSet<>(topShares));
+        //    writeMessagesToJsonFile(mdAllPrices, ".", "closePrices.json", Marketdata.InstrumentWithPrice::getClosePrice)
+//      .andFinally(() -> log.info("closePrices Saved"));
+      }
+
+      @Override
+      public void onCandlePlot(ExampleUtils.CandlePlot candlePlot) {
+        var api = investApiLazy.get();
+        var instruments = new Instruments(api.getInstrumentsService());
+        var marketdata = new Marketdata(api.getMarketDataService());
+        var tradingInstrumentsAll = instruments.tradeAvailableInstruments();
+        var topShares = tradingInstrumentsAll.select(Instruments.InstrumentObjType.SHARE, 10);
+        var mdAllPrices = marketdata.getPricesAndCandles(new HashSet<>(topShares));
+
+
+        showOHLCPlot(mdAllPrices);
+      }
+
+      @Override
+      public void onRunBot(ExampleUtils.RunBot runBot) {
+        var api = InvestApi.create(ApiConfig.loadFromClassPath("example-bot.properties"));
+        var instruments = new Instruments(api.getInstrumentsService());
+        var marketdata = new Marketdata(api.getMarketDataService());
+        var marketStream = new MarketdataStreams(api.getMarketDataStreamService());
+        var operations = new Operations(api.getOperationsService(), api.getUserService());
+        var users = new Users(api.getUserService());
+        var orders = new Orders(api.getOrdersService(), api.getOrdersStreamService());
+        var userInfo = users.getUserInfo();
+        var portfolio = operations.loadPortfolio(userInfo.getAccounts());
+
+        //  printPortfolioBalance(portfolio);
+
+        var tradingInstrumentsAll = instruments.tradeAvailableInstruments();
+        // instruments.saveTradingInstrument(tradingInstrumentsAll, "");
+
+        var topShares = tradingInstrumentsAll.select(Instruments.InstrumentObjType.SHARE, 10);
+
+        var mdAllPrices = marketdata.getPricesAndCandles(new HashSet<>(topShares));
 
 //    writeMessagesToJsonFile(mdAllPrices, ".", "closePrices.json", Marketdata.InstrumentWithPrice::getClosePrice)
 //      .andFinally(() -> log.info("closePrices Saved"));
 
-    showOHLCPlot(mdAllPrices);
+        // showOHLCPlot(mdAllPrices);
 
-    String accountId = portfolio.getPortfolios()
-      .filter(es -> es._2._1.getTotalAmountCurrencies().getValue().compareTo(BigDecimal.ZERO) > 0)
-      .maxBy(Comparator.comparingLong(es -> es._2._1.getTotalAmountCurrencies().getValue().longValue()))
-      .map(Tuple2::_1)
-      .getOrElseThrow(() -> new RuntimeException("No account with money"));
+        String accountId = portfolio.getPortfolios()
+          .filter(es -> es._2._1.getTotalAmountCurrencies().getValue().compareTo(BigDecimal.ZERO) > 0)
+          .maxBy(Comparator.comparingLong(es -> es._2._1.getTotalAmountCurrencies().getValue().longValue()))
+          .map(Tuple2::_1)
+          .getOrElseThrow(() -> new RuntimeException("No account with money"));
 
-    log.info("selected account id:{}", accountId);
+        log.info("selected account id:{}", accountId);
 
-    var streamViews = marketStream.streamInstrument(
-      "top10Shares",
-      topShares.stream()
-        .map(instrument -> Tuple.of(instrument, MD_LISTENER))
-        .collect(Collectors.toSet())
-    );
+        var streamViews = marketStream.streamInstrument(
+          "top10Shares",
+          topShares.stream()
+            .map(instrument -> Tuple.of(instrument, MD_LISTENER))
+            .collect(Collectors.toSet())
+        );
 
-    var orderBoxes = topShares.stream().map(instrument -> orders.orderBox(instrument, accountId))
-      .collect(Collectors.toMap(i -> i.instrument().getUuid(), v -> v));
+        var orderBoxes = topShares.stream().map(instrument -> orders.orderBox(instrument, accountId))
+          .collect(Collectors.toMap(i -> i.instrument().getUuid(), v -> v));
 
 
-    var bot = new Example(streamViews, initTradingStates(mdAllPrices), orderBoxes);
-    boolean running = true;
-    while (running) {
-      bot.update();
-      bot.think();
-      bot.action();
-      if (bot.isFinished) {
-        running = false;
+        var bot = new Example(streamViews, initTradingStates(mdAllPrices), orderBoxes);
+        boolean running = true;
+        while (running) {
+          bot.update();
+          bot.think();
+          bot.action();
+          if (bot.isFinished) {
+            running = false;
+          }
+          Try.run(() -> Thread.sleep(10_000)).get();
+        }
+
       }
-      Thread.sleep(10_000);
-    }
+    };
 
-    System.exit(-1);
+
+    System.exit(ExampleUtils.appCommandLine(apiCallback)
+      .execute(args));
+    //System.exit(-1);
 
 
   }
