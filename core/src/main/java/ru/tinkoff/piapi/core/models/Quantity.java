@@ -59,6 +59,17 @@ public class Quantity {
     return this.value.compareTo(quantity.value) < 0;
   }
 
+  public boolean isGreater(Quantity quantity) {
+    if (quantity == null) return false;
+    return this.value.compareTo(quantity.value) > 0;
+  }
+
+  public boolean isGreaterOrEquals(Quantity quantity) {
+    if (quantity == null) return false;
+    return this.value.compareTo(quantity.value) >= 0;
+  }
+
+
   public boolean isLessOrEquals(Quantity quantity) {
     if (quantity == null) return false;
     return this.value.compareTo(quantity.value) <= 0;
