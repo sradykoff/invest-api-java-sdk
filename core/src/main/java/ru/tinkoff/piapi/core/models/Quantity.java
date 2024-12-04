@@ -85,4 +85,9 @@ public class Quantity {
   public Quantity abs() {
     return mapValue(BigDecimal::abs);
   }
+
+  @Override
+  public String toString() {
+    return value.toString();
+  }
 }
