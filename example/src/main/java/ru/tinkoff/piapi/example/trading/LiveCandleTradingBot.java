@@ -31,11 +31,11 @@ public class LiveCandleTradingBot {
         .getSeries();
       var endIndex = series.getEndIndex();
       if (strategy.shouldEnter(endIndex, tradingRecord)) {
-        return new LiveTradeSignal(endIndex, instrumentId, OrderTradeDirection.BUY);
+        return new LiveTradeSignal(endIndex, instrumentId, OrderTradeDirection.BUY, Quantity.ofQuotation(candle.getClose()));
       } else if (strategy.shouldExit(endIndex, tradingRecord)) {
-        return new LiveTradeSignal(endIndex, instrumentId, OrderTradeDirection.SELL);
+        return new LiveTradeSignal(endIndex, instrumentId, OrderTradeDirection.SELL, Quantity.ofQuotation(candle.getClose()));
       } else {
-        return new LiveTradeSignal(endIndex, instrumentId, OrderTradeDirection.HOLD);
+        return new LiveTradeSignal(endIndex, instrumentId, OrderTradeDirection.HOLD, Quantity.ofQuotation(candle.getClose()));
       }
     } finally {
       lock.unlockWrite(stamp);
@@ -70,6 +70,7 @@ public class LiveCandleTradingBot {
     final int index;
     final InstrumentId instrumentId;
     final OrderTradeDirection direction;
+    final Quantity closePrice;
 
     public boolean isBuy() {
       return direction == OrderTradeDirection.BUY;

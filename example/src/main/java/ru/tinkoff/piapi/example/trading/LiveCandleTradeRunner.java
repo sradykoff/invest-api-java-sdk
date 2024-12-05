@@ -78,10 +78,10 @@ public class LiveCandleTradeRunner {
 
     if (nextSignal.isBuy()) {
       log.debug("signal buy: {}", nextSignal);
-      orderManager.buyBestPrice(nextSignal.getInstrumentId(), Quantity.ONE);
+      orderManager.buyLimit(nextSignal.getInstrumentId(), Quantity.ONE, nextSignal.closePrice);
     } else if (nextSignal.isSell()) {
       log.debug("signal sell: {}", nextSignal);
-      orderManager.sellBestPrice(nextSignal.getInstrumentId(), Quantity.ONE);
+      orderManager.sellLimit(nextSignal.getInstrumentId(), Quantity.ONE, nextSignal.closePrice);
     } else {
       log.debug("signal hold: {}", nextSignal);
     }
@@ -94,7 +94,13 @@ public class LiveCandleTradeRunner {
 
     var stopSignalCf = new CompletableFuture<>();
 
-    var instrumentSet = Set.of(new InstrumentId("e6123145-9665-43e0-8413-cd61b8aa9b13"));
+    var instrumentSet = Set.of(
+      new InstrumentId("e6123145-9665-43e0-8413-cd61b8aa9b13"),
+      new InstrumentId("46ae47ee-f409-4776-bf20-43a040b9e7fb"),
+      new InstrumentId("0a55e045-e9a6-42d2-ac55-29674634af2f"),
+      new InstrumentId("77cb416f-a91e-48bd-8083-db0396c61a41")
+
+    );
 
     var tradeBotRunner = new LiveCandleTradeRunner(instrumentSet, api, new AccountId("2200440705"));
 
