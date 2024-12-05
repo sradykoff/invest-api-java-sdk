@@ -22,32 +22,44 @@ public class LiveTradeOrderManager {
   private final AccountId accountId;
 
 
-  public LiveTradeOrderReceipt buyBestPrice(InstrumentId instrumentId, Quantity quantity) {
+  public LiveTradeOrderReceipt buyLimit(InstrumentId instrumentId, Quantity quantity, Quantity closePrice) {
     String orderId = UUID.randomUUID().toString();
-    var postResponse = ordersService.postOrderSync(
-      instrumentId.getId(),
-      quantity.getValue().longValue(),
-      Quantity.ONE.toQuotation(),
-      OrderDirection.ORDER_DIRECTION_BUY,
-      accountId.getId(),
-      OrderType.ORDER_TYPE_BESTPRICE,
-      orderId
-    );
-    return new LiveTradeOrderReceipt(postResponse);
+    try {
+      var postResponse = ordersService.postOrderSync(
+        instrumentId.getId(),
+        quantity.getValue().longValue(),
+        closePrice.toQuotation(),
+        OrderDirection.ORDER_DIRECTION_BUY,
+        accountId.getId(),
+        OrderType.ORDER_TYPE_LIMIT,
+        orderId
+      );
+      return new LiveTradeOrderReceipt(postResponse);
+    } catch (Exception e) {
+      log.error("Error while buying best price", e);
+      return new LiveTradeOrderReceipt(PostOrderResponse.newBuilder().build());
+    }
+
   }
 
-  public LiveTradeOrderReceipt sellBestPrice(InstrumentId instrumentId, Quantity quantity) {
+  public LiveTradeOrderReceipt sellLimit(InstrumentId instrumentId, Quantity quantity, Quantity closePrice) {
     String orderId = UUID.randomUUID().toString();
-    var postResponse = ordersService.postOrderSync(
-      instrumentId.getId(),
-      quantity.getValue().longValue(),
-      Quantity.ONE.toQuotation(),
-      OrderDirection.ORDER_DIRECTION_SELL,
-      accountId.getId(),
-      OrderType.ORDER_TYPE_BESTPRICE,
-      orderId
-    );
-    return new LiveTradeOrderReceipt(postResponse);
+    try {
+      var postResponse = ordersService.postOrderSync(
+        instrumentId.getId(),
+        quantity.getValue().longValue(),
+        closePrice.toQuotation(),
+        OrderDirection.ORDER_DIRECTION_SELL,
+        accountId.getId(),
+        OrderType.ORDER_TYPE_LIMIT,
+        orderId
+      );
+      return new LiveTradeOrderReceipt(postResponse);
+    } catch (Exception e) {
+      log.error("Error while selling best price", e);
+      return new LiveTradeOrderReceipt(PostOrderResponse.newBuilder().build());
+    }
+
   }
 
 
