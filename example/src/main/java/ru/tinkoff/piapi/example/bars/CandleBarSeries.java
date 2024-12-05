@@ -1,10 +1,11 @@
-package ru.tinkoff.piapi.example.loader;
+package ru.tinkoff.piapi.example.bars;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.ta4j.core.Bar;
 import org.ta4j.core.BarSeries;
 import org.ta4j.core.BaseBar;
+import org.ta4j.core.BaseBarSeries;
 import org.ta4j.core.num.DecimalNum;
 import ru.tinkoff.piapi.contract.v1.Candle;
 import ru.tinkoff.piapi.contract.v1.HistoricCandle;
@@ -21,16 +22,23 @@ import static ru.tinkoff.piapi.core.utils.MapperUtils.quotationToBigDecimal;
 
 @Getter
 @RequiredArgsConstructor
-public class CandleBarSeriesLoader {
+public class CandleBarSeries {
   private final Duration duration;
   private final BarSeries series;
 
-  public CandleBarSeriesLoader addCandle(Candle candle) {
+  public CandleBarSeries(String nm, Duration duration, int maxBarCount) {
+    this.duration = duration;
+    BarSeries series = new BaseBarSeries(nm + duration.toString());
+    series.setMaximumBarCount(maxBarCount);
+    this.series = series;
+  }
+
+  public CandleBarSeries addCandle(Candle candle) {
     var lastCandleEndOpt = Optional.of(series)
       .filter(s -> s.getBarCount() > 0)
       .map(BarSeries::getLastBar)
       .map(Bar::getEndTime);
-    var candleTime = ZonedDateTime.ofInstant(DateUtils.timestampToInstant(candle.getTime()), ZoneId.systemDefault());
+    var candleTime = ZonedDateTime.ofInstant(DateUtils.timestampToInstant(candle.getTime()), ZoneId.of("UTC"));
     if (lastCandleEndOpt.isPresent() && candleTime.isEqual(lastCandleEndOpt.get())) {
       series.addBar(
         new BaseBar(
@@ -60,11 +68,11 @@ public class CandleBarSeriesLoader {
     return this;
   }
 
-  public CandleBarSeriesLoader addFromHistory(List<HistoricCandle> candles) {
-    candles.forEach(historyCandle->series.addBar(
+  public CandleBarSeries addFromHistory(List<HistoricCandle> candles) {
+    candles.forEach(historyCandle -> series.addBar(
       new BaseBar(
         duration,
-        ZonedDateTime.ofInstant(DateUtils.timestampToInstant(historyCandle.getTime()), ZoneId.systemDefault()),
+        ZonedDateTime.ofInstant(DateUtils.timestampToInstant(historyCandle.getTime()), ZoneId.of("UTC")),
         quotationToBigDecimal(historyCandle.getOpen()),
         quotationToBigDecimal(historyCandle.getHigh()),
         quotationToBigDecimal(historyCandle.getLow()),

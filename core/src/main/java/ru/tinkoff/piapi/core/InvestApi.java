@@ -249,7 +249,7 @@ public class InvestApi {
   @Nonnull
   public static Channel defaultChannel(ApiConfig config) {
     var headers = new Metadata();
-    addAuthHeader(headers, Objects.requireNonNull(config.getToken()));
+    addAuthHeader(headers, Objects.requireNonNull(config.getToken(), "Token is required"));
     addAppNameHeader(headers, config.getAppNm());
 
     return NettyChannelBuilder
