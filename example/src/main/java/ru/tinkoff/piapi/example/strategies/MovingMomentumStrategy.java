@@ -10,11 +10,7 @@ import org.ta4j.core.backtest.BarSeriesManager;
 import org.ta4j.core.criteria.pnl.ReturnCriterion;
 import org.ta4j.core.indicators.EMAIndicator;
 import org.ta4j.core.indicators.MACDIndicator;
-import org.ta4j.core.indicators.SMAIndicator;
 import org.ta4j.core.indicators.StochasticOscillatorKIndicator;
-import org.ta4j.core.indicators.adx.ADXIndicator;
-import org.ta4j.core.indicators.adx.MinusDIIndicator;
-import org.ta4j.core.indicators.adx.PlusDIIndicator;
 import org.ta4j.core.indicators.helpers.ClosePriceIndicator;
 import org.ta4j.core.indicators.helpers.HighPriceIndicator;
 import org.ta4j.core.indicators.helpers.LowPriceIndicator;
@@ -23,18 +19,14 @@ import org.ta4j.core.indicators.numeric.NumericIndicator;
 import org.ta4j.core.indicators.pivotpoints.FibonacciReversalIndicator;
 import org.ta4j.core.indicators.pivotpoints.PivotPointIndicator;
 import org.ta4j.core.indicators.pivotpoints.TimeLevel;
-import org.ta4j.core.indicators.statistics.MeanDeviationIndicator;
-import org.ta4j.core.num.DecimalNum;
 import org.ta4j.core.rules.CrossedDownIndicatorRule;
 import org.ta4j.core.rules.CrossedUpIndicatorRule;
 import org.ta4j.core.rules.OverIndicatorRule;
-import org.ta4j.core.rules.StopLossRule;
 import org.ta4j.core.rules.UnderIndicatorRule;
 import ru.tinkoff.piapi.contract.v1.CandleInterval;
-import ru.tinkoff.piapi.contract.v1.GetCandlesRequest;
 import ru.tinkoff.piapi.core.ApiConfig;
 import ru.tinkoff.piapi.core.InvestApi;
-import ru.tinkoff.piapi.example.loader.CandleBarSeriesLoader;
+import ru.tinkoff.piapi.example.bars.CandleBarSeries;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -76,28 +68,26 @@ public class MovingMomentumStrategy {
     MedianPriceIndicator medianPriceIndicator = new MedianPriceIndicator(series);
 
 
-
     PivotPointIndicator pivotPointIndicator = new PivotPointIndicator(series, TimeLevel.BARBASED);
     FibonacciReversalIndicator fibonacciFactor1Indicator = new FibonacciReversalIndicator(pivotPointIndicator, FibonacciReversalIndicator.FibonacciFactor.FACTOR_1, FibonacciReversalIndicator.FibReversalTyp.RESISTANCE);
     FibonacciReversalIndicator fibonacciFactor2Indicator = new FibonacciReversalIndicator(pivotPointIndicator, FibonacciReversalIndicator.FibonacciFactor.FACTOR_2, FibonacciReversalIndicator.FibReversalTyp.SUPPORT);
 
     var fibonacciFactor2IndicatorDelta = NumericIndicator.of(fibonacciFactor2Indicator)
-      .multipliedBy(1.02)
-      ;
+      .multipliedBy(1.02);
 
     // The bias is bullish when the shorter-moving average moves above the longer
     // moving average.
     // The bias is bearish when the shorter-moving average moves below the longer
     // moving average.
     EMAIndicator shortEma = new EMAIndicator(closePrice, 9);
-    EMAIndicator longEma = new EMAIndicator(closePrice, 26);
+    EMAIndicator longEma = new EMAIndicator(closePrice, 20);
 
     StochasticOscillatorKIndicator stochasticOscillK = new StochasticOscillatorKIndicator(series, 3);
 
     MACDIndicator macd = new MACDIndicator(closePrice, 9, 26);
     EMAIndicator emaMacd = new EMAIndicator(macd, 18);
 
-   // var smaStoh = new MeanDeviationIndicator(stochasticOscillK, 3);
+    // var smaStoh = new MeanDeviationIndicator(stochasticOscillK, 3);
     // Entry rule
     Rule entryRule = new OverIndicatorRule(shortEma, longEma) // Trend
       .and(new CrossedDownIndicatorRule(stochasticOscillK, 20)) // Signal 1
@@ -117,21 +107,19 @@ public class MovingMomentumStrategy {
     var api = InvestApi.create(ApiConfig
       .loadFromClassPath("example-bot.properties"));
 
-    BarSeries series = new BaseBarSeries("Candle");
-    series.setMaximumBarCount(1200);
 
     var historicCandles = api.getMarketDataService()
       .getCandlesSync(
         "e6123145-9665-43e0-8413-cd61b8aa9b13",
-        Instant.now().minusSeconds(24* 3600),
+        Instant.now().minusSeconds(24 * 3600),
         Instant.now(),
         CandleInterval.CANDLE_INTERVAL_1_MIN
       );
 
-    CandleBarSeriesLoader barSeriesLoader = new CandleBarSeriesLoader(Duration.ofMinutes(1), series)
+    CandleBarSeries barSeriesLoader = new CandleBarSeries("Candles ", Duration.ofMinutes(1), 1200)
       .addFromHistory(historicCandles);
 
-    series = barSeriesLoader.getSeries();
+    var series = barSeriesLoader.getSeries();
 
 
     // Building the trading strategy
