@@ -19,9 +19,12 @@ import org.ta4j.core.indicators.numeric.NumericIndicator;
 import org.ta4j.core.indicators.pivotpoints.FibonacciReversalIndicator;
 import org.ta4j.core.indicators.pivotpoints.PivotPointIndicator;
 import org.ta4j.core.indicators.pivotpoints.TimeLevel;
+import org.ta4j.core.num.DecimalNum;
 import org.ta4j.core.rules.CrossedDownIndicatorRule;
 import org.ta4j.core.rules.CrossedUpIndicatorRule;
 import org.ta4j.core.rules.OverIndicatorRule;
+import org.ta4j.core.rules.StopGainRule;
+import org.ta4j.core.rules.StopLossRule;
 import org.ta4j.core.rules.UnderIndicatorRule;
 import ru.tinkoff.piapi.contract.v1.CandleInterval;
 import ru.tinkoff.piapi.core.ApiConfig;
@@ -91,13 +94,15 @@ public class MovingMomentumStrategy {
     // Entry rule
     Rule entryRule = new OverIndicatorRule(shortEma, longEma) // Trend
       .and(new CrossedDownIndicatorRule(stochasticOscillK, 20)) // Signal 1
-    //  .and(new CrossedDownIndicatorRule(closePrice, fibonacciFactor1Indicator)) // Signal 1
+ //     .and(new CrossedDownIndicatorRule(closePrice, fibonacciFactor1Indicator)) // Signal 1
       .and(new OverIndicatorRule(macd, emaMacd)); // Signal 2
 
     // Exit rule
     Rule exitRule = new UnderIndicatorRule(shortEma, longEma) // Trend
       .and(new CrossedUpIndicatorRule(stochasticOscillK, 80)) // Signal 1
-     // .and(new OverIndicatorRule(closePrice, fibonacciFactor2Indicator)) // Signal 1
+     // .and(new OverIndicatorRule(closePrice, fibonacciFactor2Indicator))
+      .and(new StopGainRule(closePrice, DecimalNum.valueOf(2))
+        .or(new StopLossRule(closePrice, DecimalNum.valueOf(3))))// Signal 1
       .and(new UnderIndicatorRule(macd, emaMacd)); // Signal 2
 
     return new BaseStrategy(entryRule, exitRule);
