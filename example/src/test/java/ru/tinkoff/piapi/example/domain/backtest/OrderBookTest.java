@@ -2,6 +2,7 @@ package ru.tinkoff.piapi.example.domain.backtest;
 
 import ru.tinkoff.piapi.core.models.Quantity;
 import ru.tinkoff.piapi.example.domain.InstrumentId;
+import ru.tinkoff.piapi.example.domain.orderbook.OrderBookSide;
 import ru.tinkoff.piapi.example.domain.trading.OrderId;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -16,32 +17,32 @@ class OrderBookTest {
       new OrderId("ORDER-id-1"),
       Quantity.ofUnits(100),
       Quantity.ONE,
-      OrderBook.OrderSide.BID
+      OrderBookSide.BID
     );
 
     nextOrderBookTuple =  nextOrderBookTuple._1.addOrder(
       new OrderId("ORDER-id-2"),
       Quantity.ofUnits(2),
       Quantity.ofUnits(2),
-      OrderBook.OrderSide.ASK
+      OrderBookSide.ASK
     );
 
     nextOrderBookTuple = nextOrderBookTuple._1.addOrder(
       new OrderId("ORDER-id-3"),
       Quantity.ONE,
       Quantity.ONE,
-      OrderBook.OrderSide.ASK
+      OrderBookSide.ASK
     );
 
     nextOrderBookTuple = nextOrderBookTuple._1.addOrder(
       new OrderId("ORDER-id-4"),
       Quantity.ofUnits(2),
       Quantity.ofUnits(2),
-      OrderBook.OrderSide.ASK
+      OrderBookSide.ASK
     );
 
-    var bidOrdersMap = nextOrderBookTuple._1.getOrdersMap(OrderBook.OrderSide.BID);
-    var askOrdersMap = nextOrderBookTuple._1.getOrdersMap(OrderBook.OrderSide.ASK);
+    var bidOrdersMap = nextOrderBookTuple._1.getOrdersMap(OrderBookSide.BID);
+    var askOrdersMap = nextOrderBookTuple._1.getOrdersMap(OrderBookSide.ASK);
 
     System.out.println("BID: " + bidOrdersMap.toString());
     System.out.println("ASK: " + askOrdersMap.toString());
@@ -55,11 +56,11 @@ class OrderBookTest {
       new OrderId("ORDER-id-5"),
       Quantity.ofUnits(5),
       Quantity.ofUnits(2),
-      OrderBook.OrderSide.BID
+      OrderBookSide.BID
     );
 
-    bidOrdersMap = nextOrderBookTuple._1.getOrdersMap(OrderBook.OrderSide.BID);
-    askOrdersMap = nextOrderBookTuple._1.getOrdersMap(OrderBook.OrderSide.ASK);
+    bidOrdersMap = nextOrderBookTuple._1.getOrdersMap(OrderBookSide.BID);
+    askOrdersMap = nextOrderBookTuple._1.getOrdersMap(OrderBookSide.ASK);
 
     System.out.println("BID: " + bidOrdersMap.toString());
     System.out.println("ASK: " + askOrdersMap.toString());
@@ -72,11 +73,11 @@ class OrderBookTest {
       new OrderId("ORDER-id-6"),
       Quantity.ofUnits(1),
       Quantity.ofUnits(2),
-      OrderBook.OrderSide.BID
+      OrderBookSide.BID
     );
 
-    bidOrdersMap = nextOrderBookTuple._1.getOrdersMap(OrderBook.OrderSide.BID);
-    askOrdersMap = nextOrderBookTuple._1.getOrdersMap(OrderBook.OrderSide.ASK);
+    bidOrdersMap = nextOrderBookTuple._1.getOrdersMap(OrderBookSide.BID);
+    askOrdersMap = nextOrderBookTuple._1.getOrdersMap(OrderBookSide.ASK);
 
     System.out.println("BID: " + bidOrdersMap.toString());
     System.out.println("ASK: " + askOrdersMap.toString());
@@ -88,11 +89,11 @@ class OrderBookTest {
       new OrderId("ORDER-id-7"),
       Quantity.ofUnits(1),
       Quantity.ofUnits(2),
-      OrderBook.OrderSide.BID
+      OrderBookSide.BID
     );
 
-    bidOrdersMap = nextOrderBookTuple._1.getOrdersMap(OrderBook.OrderSide.BID);
-    askOrdersMap = nextOrderBookTuple._1.getOrdersMap(OrderBook.OrderSide.ASK);
+    bidOrdersMap = nextOrderBookTuple._1.getOrdersMap(OrderBookSide.BID);
+    askOrdersMap = nextOrderBookTuple._1.getOrdersMap(OrderBookSide.ASK);
 
     System.out.println("BID: " + bidOrdersMap.toString());
     System.out.println("ASK: " + askOrdersMap.toString());
@@ -105,11 +106,11 @@ class OrderBookTest {
       new OrderId("ORDER-id-8"),
       Quantity.ofUnits(1),
       Quantity.ofUnits(2),
-      OrderBook.OrderSide.ASK
+      OrderBookSide.ASK
     );
 
-    bidOrdersMap = nextOrderBookTuple._1.getOrdersMap(OrderBook.OrderSide.BID);
-    askOrdersMap = nextOrderBookTuple._1.getOrdersMap(OrderBook.OrderSide.ASK);
+    bidOrdersMap = nextOrderBookTuple._1.getOrdersMap(OrderBookSide.BID);
+    askOrdersMap = nextOrderBookTuple._1.getOrdersMap(OrderBookSide.ASK);
 
     System.out.println("BID: " + bidOrdersMap.toString());
     System.out.println("ASK: " + askOrdersMap.toString());

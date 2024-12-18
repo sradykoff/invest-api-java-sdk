@@ -9,6 +9,8 @@ import org.ta4j.core.BaseBarSeries;
 import org.ta4j.core.num.DecimalNum;
 import ru.tinkoff.piapi.contract.v1.Candle;
 import ru.tinkoff.piapi.contract.v1.HistoricCandle;
+import ru.tinkoff.piapi.contract.v1.Trade;
+import ru.tinkoff.piapi.core.models.Quantity;
 import ru.tinkoff.piapi.core.utils.DateUtils;
 
 import java.math.BigDecimal;
@@ -81,5 +83,24 @@ public class CandleBarSeries {
       )
     ));
     return this;
+  }
+
+
+  public CandleBarSeries addTrade(Trade trade) {
+    var tradeTime = ZonedDateTime.ofInstant(DateUtils.timestampToInstant(trade.getTime()), ZoneId.of("UTC"));
+    var lastCandleEndOpt = Optional.of(series)
+            .filter(s -> s.getBarCount() > 0)
+            .map(BarSeries::getLastBar)
+            .map(Bar::getEndTime);
+
+    if (lastCandleEndOpt.isEmpty() || lastCandleEndOpt
+            .map(zonedTime -> zonedTime.plusSeconds(duration.toSeconds()))
+            .filter(tradeTime::isAfter)
+            .isPresent()) {
+      series.addBar(duration, tradeTime);
+    }
+    series.addTrade(trade.getQuantity(), Quantity.ofQuotation(trade.getPrice()).getValue());
+    return this;
+
   }
 }

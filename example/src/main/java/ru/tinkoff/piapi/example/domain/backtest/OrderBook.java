@@ -18,6 +18,7 @@ import lombok.ToString;
 import lombok.With;
 import ru.tinkoff.piapi.core.models.Quantity;
 import ru.tinkoff.piapi.example.domain.InstrumentId;
+import ru.tinkoff.piapi.example.domain.orderbook.OrderBookSide;
 import ru.tinkoff.piapi.example.domain.trading.OrderId;
 
 import java.math.BigDecimal;
@@ -39,7 +40,7 @@ public class OrderBook {
     this(instrumentId, TreeMap.empty(), TreeMap.empty(Comparator.reverseOrder()), HashMap.empty());
   }
 
-  public Tuple2<OrderBook, OrderBookExecutionEvent> addOrder(OrderId id, Quantity quantity, Quantity price, OrderSide side) {
+  public Tuple2<OrderBook, OrderBookExecutionEvent> addOrder(OrderId id, Quantity quantity, Quantity price, OrderBookSide side) {
     OrderBookExecutionEvent event = new OrderBookExecutionEvent(instrumentId, List.of(new OrderAddedEvent(id, side, quantity, price)));
     var order = new Order(id, side, quantity, price);
 
@@ -172,7 +173,7 @@ public class OrderBook {
   }
 
 
-  public SortedMap<BigDecimal, Queue<Order>> getOrdersMap(OrderSide side) {
+  public SortedMap<BigDecimal, Queue<Order>> getOrdersMap(OrderBookSide side) {
     switch (side) {
       case BID:
         return buyOrders;
@@ -183,12 +184,12 @@ public class OrderBook {
     }
   }
 
-  OrderSide getOrderSide(OrderSide side, boolean isSameSide) {
-    if (!isSameSide) side = (side == OrderSide.BID) ? OrderSide.ASK : OrderSide.BID;
+  OrderBookSide getOrderSide(OrderBookSide side, boolean isSameSide) {
+    if (!isSameSide) side = (side == OrderBookSide.BID) ? OrderBookSide.ASK : OrderBookSide.BID;
     return side;
   }
 
-  OrderBook modifyOrdersMap(OrderSide side, Function1<SortedMap<BigDecimal, Queue<Order>>, SortedMap<BigDecimal, Queue<Order>>> func) {
+  OrderBook modifyOrdersMap(OrderBookSide side, Function1<SortedMap<BigDecimal, Queue<Order>>, SortedMap<BigDecimal, Queue<Order>>> func) {
     return modifyOrdersMap(this, side, func);
   }
 
@@ -203,17 +204,12 @@ public class OrderBook {
     ).withOrders(this.orders.put(order.orderId, order));
   }
 
-  static OrderBook modifyOrdersMap(OrderBook orderBook, OrderSide side, Function1<SortedMap<BigDecimal, Queue<Order>>, SortedMap<BigDecimal, Queue<Order>>> func) {
-    if (side == OrderSide.BID) {
+  static OrderBook modifyOrdersMap(OrderBook orderBook, OrderBookSide side, Function1<SortedMap<BigDecimal, Queue<Order>>, SortedMap<BigDecimal, Queue<Order>>> func) {
+    if (side == OrderBookSide.BID) {
       return orderBook.withBuyOrders(func.apply(orderBook.buyOrders));
     } else {
       return orderBook.withSellOrders(func.apply(orderBook.sellOrders));
     }
-  }
-
-  public enum OrderSide {
-    BID, //buy
-    ASK, //sell
   }
 
   @RequiredArgsConstructor
@@ -234,7 +230,7 @@ public class OrderBook {
   @RequiredArgsConstructor
   public static class Order {
     final OrderId orderId;
-    final OrderSide side;
+    final OrderBookSide side;
     final Quantity quantity;
     final Quantity price;
 
@@ -244,7 +240,7 @@ public class OrderBook {
 
     boolean isExecutablePrice(BigDecimal comparingPrice) {
       if (isExecutable()) {
-        if (side == OrderSide.BID) {
+        if (side == OrderBookSide.BID) {
           return price.isGreaterOrEquals(new Quantity(comparingPrice));
         } else {
           return price.isLessOrEquals(new Quantity(comparingPrice));
@@ -291,7 +287,7 @@ public class OrderBook {
   public static class OrderAddedEvent extends OrderBookEvent {
 
     final OrderId orderId;
-    final OrderSide side;
+    final OrderBookSide side;
     final Quantity quantity;
     final Quantity price;
 
@@ -302,7 +298,7 @@ public class OrderBook {
   public static class OrderRemovedEvent extends OrderBookEvent {
 
     final OrderId orderId;
-    final OrderSide side;
+    final OrderBookSide side;
     final Quantity quantity;
     final Quantity price;
 
@@ -322,7 +318,7 @@ public class OrderBook {
   public static class OrderFilledEvent extends OrderBookEvent {
 
     final OrderId orderId;
-    final OrderSide originSide;
+    final OrderBookSide originSide;
     final Quantity quantity;
 
     final Order matchedAsideOrder;

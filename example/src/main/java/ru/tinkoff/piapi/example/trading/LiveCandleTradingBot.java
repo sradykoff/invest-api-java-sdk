@@ -28,7 +28,7 @@ public class LiveCandleTradingBot {
     long stamp = lock.writeLock();
     try {
       var series = candleBarSeries.addCandle(candle)
-        .getSeries();
+              .getSeries();
       var endIndex = series.getEndIndex();
       if (strategy.shouldEnter(endIndex, tradingRecord)) {
         return new LiveTradeSignal(endIndex, instrumentId, OrderTradeDirection.BUY, Quantity.ofQuotation(candle.getClose()));
